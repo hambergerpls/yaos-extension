@@ -1,90 +1,89 @@
-# Obsidian Sample Plugin
+# YAOS Extension
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+An [Obsidian](https://obsidian.md) plugin that extends [YAOS](https://github.com/nergal-perm/obsidian-yaos) (Yet Another Obsidian Sync) with collaborative presence features — without forking YAOS.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+### Collaborator names on cursors
 
-## First time developing plugins?
+YAOS uses [y-codemirror.next](https://github.com/yjs/y-codemirror.next) which renders name labels (`.cm-ySelectionInfo`) next to each remote cursor, but YAOS hides them with CSS. This plugin overrides that to show the collaborator's device name when you hover over their cursor caret.
 
-Quick starting guide for new plugin devs:
+- Names appear on hover to avoid the "looks like inserted text" problem
+- Name label inherits the peer's awareness color
+- Togglable via **Settings > YAOS Extension > Show collaborator names on cursors**
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### Presence indicator (who's online)
 
-## Releasing new releases
+A status bar item shows the current sync state and connected collaborators:
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+- Green dot when sync is connected, dimmed dot when disconnected
+- Peer count: "You + Alice" or "You + 3 collaborators"
+- Colored dots for each peer (using their awareness color)
+- Hover over a dot to see the collaborator's device name
+- Falls back to "Not synced" when YAOS is unavailable
+- Togglable via **Settings > YAOS Extension > Show presence in status bar**
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## Installation
 
-## Adding your plugin to the community plugin list
+### With BRAT (recommended)
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) from Community plugins
+2. Open **Settings > BRAT > Add Beta plugin**
+3. Enter `hambergerpls/yaos-extension`
+4. Select **Add Plugin**
+5. Enable "YAOS Extension" in **Settings > Community plugins**
 
-## How to use
+### Manual
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+1. Download `main.js`, `styles.css`, and `manifest.json` from the [latest release](https://github.com/hambergerpls/yaos-extension/releases)
+2. Create a folder `<vault>/.obsidian/plugins/yaos-extension/`
+3. Copy the three files into that folder
+4. Reload Obsidian and enable "YAOS Extension" in **Settings > Community plugins**
 
-## Manually installing the plugin
+## Requirements
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+- [YAOS](https://github.com/nergal-perm/obsidian-yaos) plugin installed and enabled
+- Obsidian 1.5.0 or later
 
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+## Settings
 
-## Funding URL
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Show collaborator names on cursors | On | Display device names on hover over remote cursors |
+| Show presence in status bar | On | Show connected collaborators in the status bar |
+| Show peer color dots in status bar | On | Show colored dots for each peer in the status bar |
 
-You can include funding URLs where people who use your plugin can financially support it.
+## TODO
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+### Features
+- [ ] Mention other devices (like Notion @-mentions)
+- [ ] Add comments as a device (like Notion comments)
+- [ ] Threaded comment discussions (like Notion)
+- [ ] Notification history — check past notifications
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+
+## How it works
+
+The plugin accesses YAOS internals at runtime via `app.plugins.getPlugin("yaos")` to reach the Yjs [Awareness](https://docs.yjs.dev/api/about-awareness) instance. It subscribes to awareness `change` events to track peer joins, leaves, and updates.
+
+Since YAOS has no public API, this relies on traversing private fields (`vaultSync > provider > awareness`). If YAOS updates break this access path, the plugin degrades gracefully to showing "Not synced" rather than crashing.
+
+```
+main.ts ──> presenceTracker.ts ──> yaosApi.ts ──> YAOS plugin (runtime)
+   │                │
+   ▼                ▼
+statusBar.ts    styles.css (CSS class override)
 ```
 
-If you have multiple URLs, you can also do:
+## Development
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+```bash
+npm install
+npm run dev     # watch mode
+npm run build   # production build
+npm test        # run tests (48 tests)
 ```
 
-## API Documentation
+## License
 
-See https://docs.obsidian.md
+[0-BSD](LICENSE)
