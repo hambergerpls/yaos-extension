@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CommentView } from "./commentView";
 import { CommentStore } from "./commentStore";
 import type { CommentThread, Comment, Reply } from "./types";
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 
 function makeStore(threads: CommentThread[]) {
   return {
@@ -273,9 +273,9 @@ describe("CommentView", () => {
   });
 
   describe("mention suggest integration", () => {
-    const mockPeers: RemotePeer[] = [
-      { clientId: 1, name: "Alice", color: "#f00", colorLight: "#f0033", hasCursor: true },
-      { clientId: 2, name: "Bob", color: "#0f0", colorLight: "#0f033", hasCursor: false },
+    const mockPeers: KnownDevice[] = [
+      { name: "Alice", color: "#f00", colorLight: "#f0033", online: true, hasCursor: true },
+      { name: "Bob", color: "#0f0", colorLight: "#0f033", online: true, hasCursor: false },
     ];
 
     it("shows mention dropdown when typing @ in comment textarea with getPeers callback", async () => {

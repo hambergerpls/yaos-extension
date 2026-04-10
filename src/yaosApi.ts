@@ -29,6 +29,20 @@ export interface RemotePeer {
   hasCursor: boolean;
 }
 
+export interface DeviceRecord {
+  firstSeen: number;
+  lastSeen: number;
+  color: string;
+}
+
+export interface KnownDevice {
+  name: string;
+  color: string;
+  colorLight: string;
+  online: boolean;
+  hasCursor: boolean;
+}
+
 function getYaosPlugin(app: App): unknown | null {
   try {
     return (app as any).plugins?.getPlugin("yaos") ?? null;
@@ -93,4 +107,56 @@ export function getLocalDeviceName(app: App): string {
   if (!plugin) return "Unknown";
   const settings = (plugin as any)?.settings;
   return settings?.deviceName || "Unknown";
+}
+
+export function getDeviceRegistry(app: App): Map<string, DeviceRecord> | null {
+  const plugin = getYaosPlugin(app);
+  if (!plugin) return null;
+
+  const vaultSync = (plugin as any)?.vaultSync;
+  if (!vaultSync) return null;
+
+  const devices = (vaultSync as any)?.devices;
+  if (!devices) return null;
+
+  const result = new Map<string, DeviceRecord>();
+  for (const [name, record] of devices) {
+    result.set(name, { ...record });
+  }
+  return result;
+}
+
+export function getAllKnownDevices(app: App, awareness: AwarenessLike | null): KnownDevice[] {
+  const registry = getDeviceRegistry(app);
+  const onlinePeers = awareness ? getRemotePeers(awareness) : [];
+  const onlineNames = new Set(onlinePeers.map(p => p.name));
+
+  const devices: KnownDevice[] = [];
+
+  for (const peer of onlinePeers) {
+    devices.push({
+      name: peer.name,
+      color: peer.color,
+      colorLight: peer.colorLight,
+      online: true,
+      hasCursor: peer.hasCursor,
+    });
+  }
+
+  if (registry) {
+    const localName = getLocalDeviceName(app);
+    for (const [name, record] of registry) {
+      if (onlineNames.has(name)) continue;
+      if (name === localName) continue;
+      devices.push({
+        name,
+        color: record.color,
+        colorLight: record.color + "33",
+        online: false,
+        hasCursor: false,
+      });
+    }
+  }
+
+  return devices;
 }

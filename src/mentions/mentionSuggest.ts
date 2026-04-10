@@ -1,14 +1,14 @@
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 import { log } from "../logger";
 
 export class MentionSuggest {
   private textarea: HTMLTextAreaElement;
-  private getPeers: () => RemotePeer[];
+  private getPeers: () => KnownDevice[];
   private dropdown: HTMLElement | null = null;
   private activeIndex = 0;
-  private filteredPeers: RemotePeer[] = [];
+  private filteredPeers: KnownDevice[] = [];
 
-  constructor(textarea: HTMLTextAreaElement, getPeers: () => RemotePeer[]) {
+  constructor(textarea: HTMLTextAreaElement, getPeers: () => KnownDevice[]) {
     this.textarea = textarea;
     this.getPeers = getPeers;
     this.textarea.addEventListener("input", this.onInput);
@@ -64,7 +64,8 @@ export class MentionSuggest {
       const item = document.createElement("div");
       item.className =
         "yaos-extension-mention-item" +
-        (i === this.activeIndex ? " active" : "");
+        (i === this.activeIndex ? " active" : "") +
+        (!peer.online ? " yaos-extension-mention-offline" : "");
 
       const dot = document.createElement("span");
       dot.className = "yaos-extension-mention-color-dot";
@@ -98,7 +99,7 @@ export class MentionSuggest {
     }
   }
 
-  private selectPeer(peer: RemotePeer) {
+  private selectPeer(peer: KnownDevice) {
     const query = this.findMentionQuery();
     if (!query) return;
 

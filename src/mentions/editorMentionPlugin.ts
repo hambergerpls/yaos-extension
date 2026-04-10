@@ -4,7 +4,7 @@ import {
   keymap,
 } from "@codemirror/view";
 import type { EditorView } from "@codemirror/view";
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 import { log } from "../logger";
 
 interface MentionQuery {
@@ -29,13 +29,13 @@ function findMentionQuery(
 
 export class EditorMentionPlugin {
   view: EditorView;
-  getPeers: () => RemotePeer[];
+  getPeers: () => KnownDevice[];
   query: MentionQuery | null = null;
-  filteredPeers: RemotePeer[] = [];
+  filteredPeers: KnownDevice[] = [];
   activeIndex = 0;
   dropdown: HTMLElement | null = null;
 
-  constructor(view: EditorView, getPeers: () => RemotePeer[]) {
+  constructor(view: EditorView, getPeers: () => KnownDevice[]) {
     this.view = view;
     this.getPeers = getPeers;
   }
@@ -86,7 +86,8 @@ export class EditorMentionPlugin {
       const item = document.createElement("div");
       item.className =
         "yaos-extension-mention-item" +
-        (i === this.activeIndex ? " active" : "");
+        (i === this.activeIndex ? " active" : "") +
+        (!peer.online ? " yaos-extension-mention-offline" : "");
 
       const dot = document.createElement("span");
       dot.className = "yaos-extension-mention-color-dot";
@@ -133,7 +134,7 @@ export class EditorMentionPlugin {
     }
   }
 
-  selectPeer(peer: RemotePeer) {
+  selectPeer(peer: KnownDevice) {
     if (!this.query) return;
 
     const from = this.query.from;
@@ -187,7 +188,7 @@ export class EditorMentionPlugin {
 }
 
 export function editorMentionExtension(
-  getPeers: () => RemotePeer[],
+  getPeers: () => KnownDevice[],
 ) {
   const plugin = ViewPlugin.fromClass(
     class extends EditorMentionPlugin {

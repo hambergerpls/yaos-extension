@@ -5,7 +5,11 @@ import {
   isYaosConnected,
   getRemotePeers,
   getLocalDeviceName,
+  getDeviceRegistry,
+  getAllKnownDevices,
   type AwarenessLike,
+  type DeviceRecord,
+  type KnownDevice,
 } from "./yaosApi";
 
 function makeFakeApp(yaosPlugin: unknown) {
@@ -172,5 +176,205 @@ describe("getLocalDeviceName", () => {
   it("returns Unknown when deviceName is not set", () => {
     const app = makeFakeApp({ settings: {} });
     expect(getLocalDeviceName(app)).toBe("Unknown");
+  });
+});
+
+function makeDevicesMap(entries: [string, DeviceRecord][]): Map<string, DeviceRecord> {
+  return new Map(entries);
+}
+
+describe("getDeviceRegistry", () => {
+  it("returns null when YAOS plugin is not installed", () => {
+    const app = makeFakeApp(null);
+    expect(getDeviceRegistry(app)).toBeNull();
+  });
+
+  it("returns null when vaultSync is missing", () => {
+    const app = makeFakeApp({});
+    expect(getDeviceRegistry(app)).toBeNull();
+  });
+
+  it("returns null when devices map is missing", () => {
+    const app = makeFakeApp({ vaultSync: {} });
+    expect(getDeviceRegistry(app)).toBeNull();
+  });
+
+  it("returns empty map when devices map has no entries", () => {
+    const devicesMap = makeDevicesMap([]);
+    const app = makeFakeApp({ vaultSync: { devices: devicesMap } });
+    const result = getDeviceRegistry(app);
+    expect(result).not.toBeNull();
+    expect(result!.size).toBe(0);
+  });
+
+  it("returns a copy of the device registry entries", () => {
+    const now = Date.now();
+    const record: DeviceRecord = { firstSeen: now, lastSeen: now, color: "#ff0000" };
+    const devicesMap = makeDevicesMap([["Alice-Laptop", record]]);
+    const app = makeFakeApp({ vaultSync: { devices: devicesMap } });
+
+    const result = getDeviceRegistry(app);
+    expect(result).not.toBeNull();
+    expect(result!.size).toBe(1);
+    const entry = result!.get("Alice-Laptop")!;
+    expect(entry.firstSeen).toBe(now);
+    expect(entry.lastSeen).toBe(now);
+    expect(entry.color).toBe("#ff0000");
+  });
+
+  it("returns multiple entries", () => {
+    const now = Date.now();
+    const devicesMap = makeDevicesMap([
+      ["Alice-Laptop", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+      ["Bob-Phone", { firstSeen: now - 1000, lastSeen: now, color: "#00ff00" }],
+    ]);
+    const app = makeFakeApp({ vaultSync: { devices: devicesMap } });
+    const result = getDeviceRegistry(app);
+    expect(result!.size).toBe(2);
+    expect(result!.has("Alice-Laptop")).toBe(true);
+    expect(result!.has("Bob-Phone")).toBe(true);
+  });
+});
+
+describe("getAllKnownDevices", () => {
+  function makeAppWithDevices(devices: [string, DeviceRecord][] | null, localName = "MyDevice") {
+    const vaultSync: Record<string, unknown> = {};
+    if (devices !== null) {
+      vaultSync.devices = makeDevicesMap(devices);
+    }
+    return makeFakeApp({ vaultSync, settings: { deviceName: localName } });
+  }
+
+  it("returns online peers when no registry exists", () => {
+    const app = makeAppWithDevices(null);
+    const states = new Map([
+      [1, { user: { name: "Me", color: "#fff", colorLight: "#fff33" } }],
+      [2, { user: { name: "Alice", color: "#f00", colorLight: "#f0033" } }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]).toEqual({
+      name: "Alice",
+      color: "#f00",
+      colorLight: "#f0033",
+      online: true,
+      hasCursor: false,
+    });
+  });
+
+  it("returns empty array when no awareness and no registry", () => {
+    const app = makeAppWithDevices(null);
+    const devices = getAllKnownDevices(app, null);
+    expect(devices).toEqual([]);
+  });
+
+  it("merges online peers with offline devices from registry", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([
+      ["Alice-Laptop", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+      ["Bob-Phone", { firstSeen: now, lastSeen: now, color: "#00ff00" }],
+    ]);
+    const states = new Map([
+      [1, { user: { name: "Me", color: "#fff", colorLight: "#fff33" } }],
+      [2, { user: { name: "Alice-Laptop", color: "#ff0000", colorLight: "#ff000033" } }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(2);
+
+    const online = devices.find(d => d.name === "Alice-Laptop")!;
+    expect(online.online).toBe(true);
+    expect(online.hasCursor).toBe(false);
+    expect(online.color).toBe("#ff0000");
+
+    const offline = devices.find(d => d.name === "Bob-Phone")!;
+    expect(offline.online).toBe(false);
+    expect(offline.hasCursor).toBe(false);
+    expect(offline.color).toBe("#00ff00");
+  });
+
+  it("does not duplicate a device that is both online and in registry", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([
+      ["Alice-Laptop", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+    ]);
+    const states = new Map([
+      [1, { user: { name: "Me", color: "#fff", colorLight: "#fff33" } }],
+      [2, { user: { name: "Alice-Laptop", color: "#ff0000", colorLight: "#ff000033" } }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]!.name).toBe("Alice-Laptop");
+    expect(devices[0]!.online).toBe(true);
+  });
+
+  it("excludes the local device from offline registry entries", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([
+      ["MyDevice", { firstSeen: now, lastSeen: now, color: "#30bced" }],
+      ["Alice-Laptop", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+    ], "MyDevice");
+
+    const states = new Map([
+      [1, { user: { name: "MyDevice", color: "#30bced", colorLight: "#30bced33" } }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]!.name).toBe("Alice-Laptop");
+    expect(devices[0]!.online).toBe(false);
+  });
+
+  it("places online peers before offline devices", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([
+      ["Alice-Laptop", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+    ]);
+    const states = new Map([
+      [1, { user: { name: "Me", color: "#fff", colorLight: "#fff33" } }],
+      [2, { user: { name: "Bob-Phone", color: "#00ff00", colorLight: "#00ff0033" } }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(2);
+    expect(devices[0]!.name).toBe("Bob-Phone");
+    expect(devices[0]!.online).toBe(true);
+    expect(devices[1]!.name).toBe("Alice-Laptop");
+    expect(devices[1]!.online).toBe(false);
+  });
+
+  it("detects hasCursor from awareness for online peers", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([]);
+    const states = new Map([
+      [1, { user: { name: "Me", color: "#fff", colorLight: "#fff33" } }],
+      [2, {
+        user: { name: "Alice", color: "#f00", colorLight: "#f0033" },
+        cursor: { anchor: 10, head: 20 },
+      }],
+    ]);
+    const awareness = makeAwareness(1, states);
+
+    const devices = getAllKnownDevices(app, awareness);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]!.hasCursor).toBe(true);
+  });
+
+  it("sets colorLight for offline devices with 33 suffix", () => {
+    const now = Date.now();
+    const app = makeAppWithDevices([
+      ["Alice", { firstSeen: now, lastSeen: now, color: "#ff0000" }],
+    ]);
+
+    const devices = getAllKnownDevices(app, null);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]!.colorLight).toBe("#ff000033");
   });
 });

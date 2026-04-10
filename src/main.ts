@@ -5,7 +5,7 @@ import {
 } from "./settings";
 import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
-import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, type RemotePeer } from "./yaosApi";
+import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, type RemotePeer, type KnownDevice } from "./yaosApi";
 import { CommentStore } from "./comments/commentStore";
 import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
@@ -63,10 +63,7 @@ export default class YaosExtensionPlugin extends Plugin {
           onDelete: (targetId: string) => this.handleDelete(targetId),
           onDeleteReply: (targetId: string) => this.handleDelete(targetId),
           getPeers: () => {
-            const awareness = this.tracker?.currentAwareness;
-            const peers = awareness ? getRemotePeers(awareness) : [];
-            log("main.getPeers: awareness=%s peers=%d %o", !!awareness, peers.length, peers.map(p => p.name));
-            return peers;
+            return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null);
           },
         });
       });
@@ -129,8 +126,7 @@ export default class YaosExtensionPlugin extends Plugin {
 
     this.registerEditorExtension(
       editorMentionExtension(() => {
-        const awareness = this.tracker?.currentAwareness;
-        return awareness ? getRemotePeers(awareness) : [];
+        return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null);
       }),
     );
   }

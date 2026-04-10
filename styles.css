@@ -537,3 +537,11 @@
   display: inline-block;
   flex-shrink: 0;
 }
+
+.yaos-extension-mention-item.yaos-extension-mention-offline {
+  opacity: 0.55;
+}
+
+.yaos-extension-mention-item.yaos-extension-mention-offline .yaos-extension-mention-color-dot {
+  opacity: 0.4;
+}

@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { editorMentionExtension } from "./editorMentionPlugin";
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 
-const PEERS: RemotePeer[] = [
-  { clientId: 1, name: "Alice", color: "#ff0000", colorLight: "#ff000033", hasCursor: true },
-  { clientId: 2, name: "Bob", color: "#00ff00", colorLight: "#00ff0033", hasCursor: false },
+const PEERS: KnownDevice[] = [
+  { name: "Alice", color: "#ff0000", colorLight: "#ff000033", online: true, hasCursor: true },
+  { name: "Bob", color: "#00ff00", colorLight: "#00ff0033", online: true, hasCursor: false },
+  { name: "Carol-Old", color: "#0000ff", colorLight: "#0000ff33", online: false, hasCursor: false },
 ];
 
 function createEditor(getPeers = () => PEERS) {
@@ -90,7 +91,7 @@ describe("editorMentionPlugin", () => {
       const dropdown = document.querySelector(".yaos-extension-mention-dropdown");
       expect(dropdown).not.toBeNull();
       const items = dropdown!.querySelectorAll(".yaos-extension-mention-item");
-      expect(items.length).toBe(2);
+      expect(items.length).toBe(3);
     });
 
     it("ignores @ preceded by non-whitespace (email addresses)", () => {
@@ -189,7 +190,7 @@ describe("editorMentionPlugin", () => {
 
       const items = dropdown!.querySelectorAll(".yaos-extension-mention-item");
       expect(items[0]!.classList.contains("active")).toBe(false);
-      expect(items[1]!.classList.contains("active")).toBe(true);
+      expect(items[2]!.classList.contains("active")).toBe(true);
     });
 
     it("moveActive then confirmSelection selects the second peer", () => {
@@ -233,7 +234,7 @@ describe("editorMentionPlugin", () => {
       const dropdown = document.querySelector(".yaos-extension-mention-dropdown");
       expect(dropdown).not.toBeNull();
       const items = dropdown!.querySelectorAll(".yaos-extension-mention-item");
-      expect(items.length).toBe(2);
+      expect(items.length).toBe(3);
     });
 
     it("narrows dropdown when backspacing within query", () => {
@@ -253,7 +254,7 @@ describe("editorMentionPlugin", () => {
         selection: { anchor: 2 },
       });
       const items2 = document.querySelectorAll(".yaos-extension-mention-item");
-      expect(items2.length).toBe(2);
+      expect(items2.length).toBe(3);
     });
   });
 
@@ -268,9 +269,42 @@ describe("editorMentionPlugin", () => {
     it("renders color dots with peer colors", () => {
       insertText(view, " @");
       const dots = document.querySelectorAll(".yaos-extension-mention-color-dot");
-      expect(dots.length).toBe(2);
+      expect(dots.length).toBe(3);
       expect((dots[0] as HTMLElement).style.backgroundColor).toBe("rgb(255, 0, 0)");
       expect((dots[1] as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
+    });
+  });
+
+  describe("offline devices", () => {
+    it("applies offline CSS class to offline devices", () => {
+      insertText(view, " @");
+      const items = document.querySelectorAll(".yaos-extension-mention-item");
+      const offlineItems = document.querySelectorAll(".yaos-extension-mention-item.yaos-extension-mention-offline");
+      expect(offlineItems.length).toBe(1);
+      expect(offlineItems[0]!.textContent).toContain("Carol-Old");
+    });
+
+    it("does not apply offline class to online devices", () => {
+      insertText(view, " @");
+      const items = document.querySelectorAll(".yaos-extension-mention-item");
+      const onlineItems = document.querySelectorAll(".yaos-extension-mention-item:not(.yaos-extension-mention-offline)");
+      expect(onlineItems.length).toBe(2);
+    });
+
+    it("filters offline devices by name prefix", () => {
+      insertText(view, " @Carol");
+      const items = document.querySelectorAll(".yaos-extension-mention-item");
+      expect(items.length).toBe(1);
+      expect(items[0]!.classList.contains("yaos-extension-mention-offline")).toBe(true);
+      expect(items[0]!.textContent).toContain("Carol-Old");
+    });
+
+    it("can select an offline device", () => {
+      insertText(view, " @");
+      plugin.moveActive(1);
+      plugin.moveActive(1);
+      plugin.confirmSelection();
+      expect(view.state.doc.toString()).toBe(" @Carol-Old ");
     });
   });
 });

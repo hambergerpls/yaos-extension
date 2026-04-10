@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { CommentStore } from "./commentStore";
 import { MentionSuggest } from "../mentions/mentionSuggest";
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 import type { CommentThread } from "./types";
 
 export const COMMENTS_VIEW_TYPE = "yaos-extension-comments";
@@ -16,7 +16,7 @@ export class CommentView extends ItemView {
   private onResolve?: (commentId: string, resolved: boolean) => void;
   private onDelete?: (commentId: string) => void;
   private onDeleteReply?: (replyId: string) => void;
-  private getPeers?: () => RemotePeer[];
+  private getPeers?: () => KnownDevice[];
   private mentionSuggests: MentionSuggest[] = [];
   private replyMentionSuggests: MentionSuggest[] = [];
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
@@ -32,7 +32,7 @@ export class CommentView extends ItemView {
       onResolve?: (commentId: string, resolved: boolean) => void;
       onDelete?: (commentId: string) => void;
       onDeleteReply?: (replyId: string) => void;
-      getPeers?: () => RemotePeer[];
+      getPeers?: () => KnownDevice[];
     },
   ) {
     super(leaf);

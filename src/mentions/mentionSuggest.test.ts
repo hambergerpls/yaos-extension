@@ -1,11 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { MentionSuggest } from "./mentionSuggest";
-import type { RemotePeer } from "../yaosApi";
+import type { KnownDevice } from "../yaosApi";
 
-const mockPeers: RemotePeer[] = [
-  { clientId: 1, name: "Alice", color: "#ff0000", colorLight: "#ff000033", hasCursor: true },
-  { clientId: 2, name: "Bob", color: "#00ff00", colorLight: "#00ff0033", hasCursor: false },
-  { clientId: 3, name: "Charlie", color: "#0000ff", colorLight: "#0000ff33", hasCursor: true },
+const mockPeers: KnownDevice[] = [
+  { name: "Alice", color: "#ff0000", colorLight: "#ff000033", online: true, hasCursor: true },
+  { name: "Bob", color: "#00ff00", colorLight: "#00ff0033", online: true, hasCursor: false },
+  { name: "Charlie", color: "#0000ff", colorLight: "#0000ff33", online: false, hasCursor: false },
 ];
 
 describe("MentionSuggest", () => {
@@ -145,5 +145,39 @@ describe("MentionSuggest", () => {
     const dots = document.querySelectorAll(".yaos-extension-mention-color-dot");
     expect(dots.length).toBe(3);
     expect((dots[0]! as HTMLElement).style.backgroundColor).toBe("rgb(255, 0, 0)");
+  });
+
+  describe("offline devices", () => {
+    test("applies offline CSS class to offline devices", () => {
+      suggest = new MentionSuggest(textarea, () => mockPeers);
+      typeText("@");
+      const offlineItems = document.querySelectorAll(".yaos-extension-mention-item.yaos-extension-mention-offline");
+      expect(offlineItems.length).toBe(1);
+      expect(offlineItems[0]!.textContent).toContain("Charlie");
+    });
+
+    test("does not apply offline class to online devices", () => {
+      suggest = new MentionSuggest(textarea, () => mockPeers);
+      typeText("@");
+      const onlineItems = document.querySelectorAll(".yaos-extension-mention-item:not(.yaos-extension-mention-offline)");
+      expect(onlineItems.length).toBe(2);
+    });
+
+    test("can select an offline device via click", () => {
+      suggest = new MentionSuggest(textarea, () => mockPeers);
+      typeText("@");
+      const items = document.querySelectorAll(".yaos-extension-mention-item");
+      items[2]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      expect(textarea.value).toBe("@Charlie ");
+    });
+
+    test("can navigate to and select an offline device via keyboard", () => {
+      suggest = new MentionSuggest(textarea, () => mockPeers);
+      typeText("@");
+      pressKey("ArrowDown");
+      pressKey("ArrowDown");
+      pressKey("Enter");
+      expect(textarea.value).toBe("@Charlie ");
+    });
   });
 });
