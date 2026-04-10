@@ -13,6 +13,7 @@ import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
 import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
 import { log } from "./logger";
+import { editorMentionExtension } from "./comments/editorMentionPlugin";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -125,6 +126,13 @@ export default class YaosExtensionPlugin extends Plugin {
     }
 
     this.addSettingTab(new YaosExtensionSettingTab(this.app, this));
+
+    this.registerEditorExtension(
+      editorMentionExtension(() => {
+        const awareness = this.tracker?.currentAwareness;
+        return awareness ? getRemotePeers(awareness) : [];
+      }),
+    );
   }
 
   onunload() {
