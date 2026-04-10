@@ -14,10 +14,20 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_SETTINGS.showPeerDotsInStatusBar).toBe(true);
   });
 
+  it("has showComments enabled by default", () => {
+    expect(DEFAULT_SETTINGS.showComments).toBe(true);
+  });
+
+  it("has showNotifications enabled by default", () => {
+    expect(DEFAULT_SETTINGS.showNotifications).toBe(true);
+  });
+
   it("satisfies the YaosExtensionSettings interface", () => {
     const s: YaosExtensionSettings = DEFAULT_SETTINGS;
     expect(typeof s.showCursorNames).toBe("boolean");
     expect(typeof s.showStatusBar).toBe("boolean");
     expect(typeof s.showPeerDotsInStatusBar).toBe("boolean");
+    expect(typeof s.showComments).toBe("boolean");
+    expect(typeof s.showNotifications).toBe("boolean");
   });
 });

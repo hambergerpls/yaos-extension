@@ -1,4 +1,4 @@
-import { Notice, Plugin, PluginSettingTab, App, Setting } from "obsidian";
+import { Notice, Plugin, PluginSettingTab, App, Setting, MarkdownView } from "obsidian";
 import {
   DEFAULT_SETTINGS,
   type YaosExtensionSettings,
@@ -6,12 +6,16 @@ import {
 import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
 import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, type RemotePeer } from "./yaosApi";
+import { CommentStore } from "./comments/commentStore";
+import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
+import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
   tracker: PresenceTracker | null = null;
   statusBar: PresenceStatusBar | null = null;
   statusBarEl: HTMLElement | null = null;
+  commentStore: CommentStore | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -23,6 +27,37 @@ export default class YaosExtensionPlugin extends Plugin {
 
     if (!this.settings.showStatusBar) {
       this.statusBarEl.style.display = "none";
+    }
+
+    this.commentStore = new CommentStore(this.app.vault);
+    await this.commentStore.ensureFolder();
+
+    if (this.settings.showComments) {
+      this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
+        return new CommentView(leaf, this.commentStore!, {
+          onAddComment: (text: string) => this.handleAddComment(text),
+          onAddReply: (commentId: string, text: string) => this.handleAddReply(commentId, text),
+          onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
+        });
+      });
+
+      registerCommentCommands(this, this.commentStore, this.getDeviceInfo.bind(this), () => {
+        this.refreshCommentView();
+      });
+
+      this.registerEvent(
+        this.app.vault.on("modify", (file) => {
+          if (file.path.startsWith(".yaos-extension/comments/")) {
+            this.refreshCommentView();
+          }
+        }),
+      );
+
+      this.registerEvent(
+        this.app.workspace.on("active-leaf-change", () => {
+          this.refreshCommentView();
+        }),
+      );
     }
 
     if (!isYaosAvailable(this.app)) {
@@ -65,6 +100,105 @@ export default class YaosExtensionPlugin extends Plugin {
     const isConnected = isYaosConnected(this.app);
     const localName = getLocalDeviceName(this.app);
     this.statusBar?.update(peers, isConnected, localName);
+  }
+
+  private getDeviceInfo(): DeviceInfo {
+    const awareness = this.tracker?.currentAwareness;
+    let color = "#30bced";
+    if (awareness) {
+      const localState = awareness.getLocalState();
+      const user = localState?.user as { color?: string } | undefined;
+      if (user?.color) color = user.color;
+    }
+    return { name: getLocalDeviceName(this.app), color };
+  }
+
+  private getActiveFilePath(): string | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    return activeFile?.path ?? null;
+  }
+
+  private async refreshCommentView(): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath) return;
+
+    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof CommentView) {
+        await leaf.view.refresh(filePath);
+      }
+    }
+  }
+
+  private async handleAddComment(text: string): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    const mentions = CommentStore.extractMentions(text);
+
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    let rangeText = "";
+    let rangeContext = "";
+    let rangeOffset = 0;
+    let rangeLength = 0;
+
+    if (activeView?.editor.somethingSelected()) {
+      const info = getSelectionInfo(activeView.editor);
+      if (info) {
+        rangeText = info.rangeText;
+        rangeContext = info.rangeContext;
+        rangeOffset = info.rangeOffset;
+        rangeLength = info.rangeLength;
+      }
+    }
+
+    await this.commentStore.addComment(filePath, {
+      type: "comment",
+      id: crypto.randomUUID(),
+      text,
+      author: deviceInfo.name,
+      authorColor: deviceInfo.color,
+      createdAt: Date.now(),
+      rangeText,
+      rangeContext,
+      rangeOffset,
+      rangeLength,
+      resolved: false,
+      mentions,
+    });
+
+    await this.refreshCommentView();
+  }
+
+  private async handleAddReply(commentId: string, text: string): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    const mentions = CommentStore.extractMentions(text);
+
+    await this.commentStore.addReply(filePath, {
+      type: "reply",
+      id: crypto.randomUUID(),
+      commentId,
+      text,
+      author: deviceInfo.name,
+      authorColor: deviceInfo.color,
+      createdAt: Date.now(),
+      mentions,
+    });
+
+    await this.refreshCommentView();
+  }
+
+  private async handleResolve(commentId: string, resolved: boolean): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    await this.commentStore.resolveComment(filePath, commentId, resolved, deviceInfo.name);
+    await this.refreshCommentView();
   }
 }
 
@@ -147,6 +281,36 @@ class YaosExtensionSettingTab extends PluginSettingTab {
               const localName = getLocalDeviceName(this.app);
               this.plugin.statusBar?.update(peers, isConnected, localName);
             }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show comments")
+      .setDesc(
+        "Enable inline comment highlights in the editor and the comments sidebar panel."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showComments)
+          .onChange(async (value) => {
+            this.plugin.settings.showComments = value;
+            await this.plugin.saveSettings();
+            new Notice("Reload the plugin for this change to take effect.");
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show notifications")
+      .setDesc(
+        "Show the notification badge in the status bar and the notification panel."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showNotifications)
+          .onChange(async (value) => {
+            this.plugin.settings.showNotifications = value;
+            await this.plugin.saveSettings();
+            new Notice("Reload the plugin for this change to take effect.");
           })
       );
   }

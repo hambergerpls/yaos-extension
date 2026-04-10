@@ -110,3 +110,285 @@
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
+
+/* ============================================================
+ * YAOS Extension — Comment Highlights
+ * ============================================================ */
+
+.cm-ySelectionInfo ~ .cm-content .yaos-extension-comment-highlight {
+  background-color: rgba(245, 158, 11, 0.2);
+  border-bottom: 2px solid rgba(245, 158, 11, 0.5);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.cm-ySelectionInfo ~ .cm-content .yaos-extension-comment-highlight:hover {
+  background-color: rgba(245, 158, 11, 0.35);
+}
+
+.cm-ySelectionInfo ~ .cm-content .yaos-extension-comment-highlight-resolved {
+  background-color: rgba(245, 158, 11, 0.08);
+  border-bottom: 2px dashed rgba(245, 158, 11, 0.25);
+}
+
+.cm-ySelectionInfo ~ .cm-content .yaos-extension-comment-highlight-resolved:hover {
+  background-color: rgba(245, 158, 11, 0.15);
+}
+
+/* ============================================================
+ * YAOS Extension — Comment Sidebar View
+ * ============================================================ */
+
+.yaos-extension-comment-view {
+  padding: 12px;
+  font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-comment-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: var(--text-muted);
+}
+
+.yaos-extension-comment-input {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yaos-extension-comment-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text, inherit);
+  font-size: var(--font-ui-small, 13px);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.yaos-extension-comment-submit {
+  margin-top: 6px;
+  padding: 4px 12px;
+  background: var(--interactive-accent, #7f6df2);
+  color: var(--text-on-accent, white);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-comment-thread {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  cursor: pointer;
+}
+
+.yaos-extension-comment-thread:hover {
+  border-color: var(--interactive-accent, #7f6df2);
+}
+
+.yaos-extension-comment-thread.resolved {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.yaos-extension-comment-resolved-divider {
+  margin: 12px 0 8px 0;
+  padding: 4px 0;
+  font-size: var(--font-ui-smaller, 11px);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yaos-extension-comment-quote {
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  background: var(--background-secondary);
+  border-left: 3px solid var(--interactive-accent, #7f6df2);
+  border-radius: 0 4px 4px 0;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yaos-extension-comment-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.yaos-extension-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+}
+
+.yaos-extension-author-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.yaos-extension-author-name {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.yaos-extension-timestamp {
+  color: var(--text-faint);
+}
+
+.yaos-extension-reply-count {
+  font-size: var(--font-ui-smaller, 11px);
+  color: var(--text-faint);
+}
+
+.yaos-extension-comment-body {
+  margin: 6px 0;
+  color: var(--text-normal);
+  line-height: 1.5;
+}
+
+.yaos-extension-mention {
+  color: var(--interactive-accent, #7f6df2);
+  font-weight: 600;
+}
+
+.yaos-extension-comment-actions {
+  margin-left: auto;
+}
+
+.yaos-extension-resolve-btn {
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller, 11px);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.yaos-extension-resolve-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.yaos-extension-comment-replies {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yaos-extension-reply {
+  margin-bottom: 6px;
+  padding: 4px 0;
+}
+
+.yaos-extension-reply-input {
+  margin-top: 8px;
+}
+
+.yaos-extension-reply-textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-family: var(--font-text, inherit);
+  font-size: var(--font-ui-smaller, 12px);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.yaos-extension-reply-submit {
+  margin-top: 4px;
+  padding: 3px 10px;
+  background: var(--interactive-accent, #7f6df2);
+  color: var(--text-on-accent, white);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+/* ============================================================
+ * YAOS Extension — Notification Badge
+ * ============================================================ */
+
+.yaos-extension-notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--interactive-accent, #7f6df2);
+  color: var(--text-on-accent, white);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.yaos-extension-notification-badge:hover {
+  opacity: 0.8;
+}
+
+/* ============================================================
+ * YAOS Extension — Notification View
+ * ============================================================ */
+
+.yaos-extension-notification-view {
+  padding: 12px;
+  font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-notification-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: var(--text-muted);
+}
+
+.yaos-extension-notification-card {
+  padding: 8px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--interactive-accent, #7f6df2);
+  border-radius: 0 6px 6px 0;
+  background: var(--background-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.yaos-extension-notification-card:hover {
+  background: var(--background-secondary);
+}
+
+.yaos-extension-notification-card.unread {
+  font-weight: 600;
+}
+
+.yaos-extension-notification-card.read {
+  color: var(--text-muted);
+}
