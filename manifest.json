@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "yaos-extension",
+	"name": "YAOS Extension",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"minAppVersion": "1.5.0",
+	"description": "Shows collaborator names on cursors and a presence indicator for YAOS sync.",
+	"author": "Kavin",
+	"authorUrl": "https://github.com/kavinsood",
 	"isDesktopOnly": false
 }

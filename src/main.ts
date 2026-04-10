@@ -1,99 +1,153 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { Notice, Plugin, PluginSettingTab, App, Setting } from "obsidian";
+import {
+  DEFAULT_SETTINGS,
+  type YaosExtensionSettings,
+} from "./settings";
+import { PresenceTracker } from "./presenceTracker";
+import { PresenceStatusBar } from "./statusBar";
+import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, type RemotePeer } from "./yaosApi";
 
-// Remember to rename these classes and interfaces!
+export default class YaosExtensionPlugin extends Plugin {
+  settings: YaosExtensionSettings = DEFAULT_SETTINGS;
+  tracker: PresenceTracker | null = null;
+  statusBar: PresenceStatusBar | null = null;
+  statusBarEl: HTMLElement | null = null;
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+  async onload() {
+    await this.loadSettings();
 
-	async onload() {
-		await this.loadSettings();
+    this.applyCursorNames();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+    this.statusBarEl = this.addStatusBarItem();
+    this.statusBar = new PresenceStatusBar(this.statusBarEl, this.settings);
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
+    if (!this.settings.showStatusBar) {
+      this.statusBarEl.style.display = "none";
+    }
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+    if (!isYaosAvailable(this.app)) {
+      this.statusBar.update([], false, "");
+      new Notice("YAOS Extension: YAOS plugin not found. Please install and enable YAOS first.");
+    } else {
+      this.tracker = new PresenceTracker(this.app);
+      this.tracker.start((peers: RemotePeer[]) => {
+        this.onPresenceChange(peers);
+      });
+    }
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			}
-		});
+    this.addSettingTab(new YaosExtensionSettingTab(this.app, this));
+  }
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+  onunload() {
+    this.tracker?.stop();
+    this.statusBar?.destroy();
+    document.body.classList.remove("yaos-extension-names");
+    document.querySelectorAll(".yaos-extension-tooltip").forEach((el) => el.remove());
+  }
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
 
-	}
+  applyCursorNames() {
+    if (this.settings.showCursorNames) {
+      document.body.classList.add("yaos-extension-names");
+    } else {
+      document.body.classList.remove("yaos-extension-names");
+    }
+  }
 
-	onunload() {
-	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+  private onPresenceChange(peers: RemotePeer[]) {
+    const isConnected = isYaosConnected(this.app);
+    const localName = getLocalDeviceName(this.app);
+    this.statusBar?.update(peers, isConnected, localName);
+  }
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class YaosExtensionSettingTab extends PluginSettingTab {
+  plugin: YaosExtensionPlugin;
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+  constructor(app: App, plugin: YaosExtensionPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
+  display(): void {
+    const { containerEl } = this;
+    containerEl.textContent = "";
+
+    const heading = document.createElement("h2");
+    heading.textContent = "YAOS Extension";
+    containerEl.appendChild(heading);
+
+    if (!isYaosAvailable(this.app)) {
+      const warning = document.createElement("p");
+      warning.textContent = "YAOS plugin is not installed or enabled. This extension requires YAOS to function.";
+      warning.className = "mod-warning";
+      containerEl.appendChild(warning);
+      return;
+    }
+
+    new Setting(containerEl)
+      .setName("Show collaborator names on cursors")
+      .setDesc(
+        "Display the device name next to each remote collaborator's cursor " +
+        "in the editor. Names appear when you hover over a cursor caret."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showCursorNames)
+          .onChange(async (value) => {
+            this.plugin.settings.showCursorNames = value;
+            await this.plugin.saveSettings();
+            this.plugin.applyCursorNames();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show presence in status bar")
+      .setDesc(
+        "Display a status bar item showing how many collaborators are " +
+        "currently connected and their names."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showStatusBar)
+          .onChange(async (value) => {
+            this.plugin.settings.showStatusBar = value;
+            await this.plugin.saveSettings();
+            if (value) {
+              this.plugin.statusBarEl?.style.removeProperty("display");
+            } else if (this.plugin.statusBarEl) {
+              this.plugin.statusBarEl.style.display = "none";
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Show peer color dots in status bar")
+      .setDesc(
+        "Show colored dots for each connected collaborator in the status bar, " +
+        "using their awareness color."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showPeerDotsInStatusBar)
+          .onChange(async (value) => {
+            this.plugin.settings.showPeerDotsInStatusBar = value;
+            await this.plugin.saveSettings();
+            const awareness = this.plugin.tracker?.currentAwareness;
+            if (awareness) {
+              const peers = getRemotePeers(awareness);
+              const isConnected = isYaosConnected(this.app);
+              const localName = getLocalDeviceName(this.app);
+              this.plugin.statusBar?.update(peers, isConnected, localName);
+            }
+          })
+      );
+  }
 }
