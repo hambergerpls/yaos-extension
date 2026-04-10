@@ -1,0 +1,6 @@
+- [ ] Device name is not shown at the cursor of the user
+- [ ] There is no device name on cursor
+- [ ] There is no ability to mention other devices like notion
+- [ ] There is no ability to add comment as device like notion
+- [ ] There is no ability to discuss comments like notion
+- [ ] There is no ability to check past notifications

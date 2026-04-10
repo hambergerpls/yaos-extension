@@ -3,8 +3,8 @@
 	"name": "YAOS Extension",
 	"version": "1.0.0",
 	"minAppVersion": "1.5.0",
-	"description": "Shows collaborator names on cursors and a presence indicator for YAOS sync.",
-	"author": "Kavin",
-	"authorUrl": "https://github.com/kavinsood",
+	"description": "Extensions for YAOS sync.",
+	"author": "hambergerpls",
+	"authorUrl": "https://github.com/hambergerpls",
 	"isDesktopOnly": false
 }
