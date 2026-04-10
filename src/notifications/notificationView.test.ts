@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notificationView";
 import { NotificationStore } from "./notificationStore";
-import type { Notification } from "../comments/types";
+import type { Notification } from "./types";
 
 function makeNotification(overrides: Partial<Notification> = {}): Notification {
   return {
@@ -217,5 +217,34 @@ describe("NotificationView", () => {
     expect(cards[0]!.getAttribute("data-id")).toBe("n2");
     expect(cards[1]!.getAttribute("data-id")).toBe("n3");
     expect(cards[2]!.getAttribute("data-id")).toBe("n1");
+  });
+
+  it("renders document_mention kind icon", async () => {
+    const notifs = [makeNotification({ id: "n1", kind: "document_mention", commentId: undefined })];
+    const store = makeStore(notifs);
+    const view = new NotificationView({} as any, store, "Alice", vi.fn());
+
+    await view.onOpen();
+    await view.refresh();
+
+    const icon = view.contentEl.querySelector(".yaos-extension-notification-kind-icon");
+    expect(icon).not.toBeNull();
+    expect(icon?.getAttribute("data-kind")).toBe("document_mention");
+  });
+
+  it("calls onOpenFile with only fileId for document_mention (no commentId)", async () => {
+    const notifs = [makeNotification({ id: "n1", kind: "document_mention", commentId: undefined, fileId: "notes/doc.md" })];
+    const store = makeStore(notifs);
+    const onOpenFile = vi.fn();
+    const view = new NotificationView({} as any, store, "Alice", onOpenFile);
+
+    await view.onOpen();
+    await view.refresh();
+
+    const card = view.contentEl.querySelector(".yaos-extension-notification-card") as HTMLElement;
+    card.click();
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(onOpenFile).toHaveBeenCalledWith("notes/doc.md", undefined);
   });
 });

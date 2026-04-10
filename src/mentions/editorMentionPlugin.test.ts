@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorView, ViewPlugin } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { editorMentionExtension } from "./editorMentionPlugin";
@@ -10,10 +10,10 @@ const PEERS: KnownDevice[] = [
   { name: "Carol-Old", color: "#0000ff", colorLight: "#0000ff33", online: false, hasCursor: false },
 ];
 
-function createEditor(getPeers = () => PEERS) {
+function createEditor(getPeers = () => PEERS, onMention?: (peerName: string) => void) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
-  const ext = editorMentionExtension(getPeers);
+  const ext = editorMentionExtension(getPeers, onMention);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pluginSpec = ext[0] as ViewPlugin<any>;
   const state = EditorState.create({
@@ -306,5 +306,64 @@ describe("editorMentionPlugin", () => {
       plugin.confirmSelection();
       expect(view.state.doc.toString()).toBe(" @Carol-Old ");
     });
+  });
+});
+
+describe("editorMentionPlugin onMention callback", () => {
+  it("calls onMention when a peer is selected via confirmSelection", () => {
+    const onMention = vi.fn();
+    const result = createEditor(() => PEERS, onMention);
+    try {
+      const plugin = getPlugin(result.view, result.pluginSpec);
+      insertText(result.view, " @Al");
+
+      plugin.confirmSelection();
+
+      expect(onMention).toHaveBeenCalledWith("Alice");
+    } finally {
+      cleanup(result.view, result.parent);
+    }
+  });
+
+  it("calls onMention when a peer is clicked in the dropdown", () => {
+    const onMention = vi.fn();
+    const result = createEditor(() => PEERS, onMention);
+    try {
+      insertText(result.view, " @Bo");
+      const items = document.querySelectorAll(".yaos-extension-mention-item");
+      (items[0] as HTMLElement).dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+      expect(onMention).toHaveBeenCalledWith("Bob");
+    } finally {
+      cleanup(result.view, result.parent);
+    }
+  });
+
+  it("does not call onMention when dropdown is cancelled", () => {
+    const onMention = vi.fn();
+    const result = createEditor(() => PEERS, onMention);
+    try {
+      const plugin = getPlugin(result.view, result.pluginSpec);
+      insertText(result.view, " @Al");
+
+      plugin.cancel();
+
+      expect(onMention).not.toHaveBeenCalled();
+    } finally {
+      cleanup(result.view, result.parent);
+    }
+  });
+
+  it("works without onMention callback (backwards compatible)", () => {
+    const result = createEditor(() => PEERS);
+    try {
+      const plugin = getPlugin(result.view, result.pluginSpec);
+      insertText(result.view, " @Al");
+
+      expect(() => plugin.confirmSelection()).not.toThrow();
+      expect(result.view.state.doc.toString()).toBe(" @Alice ");
+    } finally {
+      cleanup(result.view, result.parent);
+    }
   });
 });

@@ -1,4 +1,4 @@
-import type { Notification } from "../comments/types";
+import type { Notification } from "./types";
 import { log } from "../logger";
 
 export function createMentionNotifications(opts: {
@@ -50,5 +50,25 @@ export function createReplyNotification(opts: {
     preview: opts.preview.slice(0, 80),
   };
   log("createReplyNotification: created reply notification from=%s to=%s", opts.fromDevice, opts.commentAuthor);
+  return result;
+}
+
+export function createDocumentMentionNotification(opts: {
+  fileId: string;
+  fromDevice: string;
+  targetDevice: string;
+  preview: string;
+}): Notification {
+  const result = {
+    type: "notification" as const,
+    id: crypto.randomUUID(),
+    kind: "document_mention" as const,
+    fileId: opts.fileId,
+    fromDevice: opts.fromDevice,
+    targetDevice: opts.targetDevice,
+    createdAt: Date.now(),
+    preview: opts.preview.slice(0, 80),
+  };
+  log("createDocumentMentionNotification: from=%s to=%s in %s", opts.fromDevice, opts.targetDevice, opts.fileId);
   return result;
 }

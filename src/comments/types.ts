@@ -39,19 +39,6 @@ export interface Deletion {
   deletedAt: number;
 }
 
-export interface Notification {
-  type: "notification";
-  id: string;
-  kind: "mention" | "reply" | "new_comment";
-  commentId: string;
-  replyId?: string;
-  fileId: string;
-  fromDevice: string;
-  targetDevice: string;
-  createdAt: number;
-  preview: string;
-}
-
 export type CommentEntry = Comment | Reply | ResolveEntry | Deletion;
 
 export interface CommentThread {

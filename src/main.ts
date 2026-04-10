@@ -11,7 +11,7 @@ import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
 import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
-import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
+import { createMentionNotifications, createReplyNotification, createDocumentMentionNotification } from "./notifications/notificationHelpers";
 import { DeviceStore } from "./deviceStore";
 import type { DeviceRegistry } from "./deviceStore";
 import { log } from "./logger";
@@ -100,7 +100,7 @@ export default class YaosExtensionPlugin extends Plugin {
           leaf,
           this.notificationStore!,
           getLocalDeviceName(this.app),
-          (fileId, commentId) => this.openFileAndComment(fileId, commentId),
+          (fileId, commentId?) => this.openFileAndComment(fileId, commentId),
         );
       });
 
@@ -142,9 +142,25 @@ export default class YaosExtensionPlugin extends Plugin {
     this.addSettingTab(new YaosExtensionSettingTab(this.app, this));
 
     this.registerEditorExtension(
-      editorMentionExtension(() => {
-        return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
-      }),
+      editorMentionExtension(
+        () => {
+          return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
+        },
+        (peerName: string) => {
+          if (!this.notificationStore) return;
+          const filePath = this.getActiveFilePath();
+          if (!filePath) return;
+          const localName = getLocalDeviceName(this.app);
+          if (localName === peerName) return;
+          const notification = createDocumentMentionNotification({
+            fileId: filePath,
+            fromDevice: localName,
+            targetDevice: peerName,
+            preview: `@${peerName}`,
+          });
+          this.notificationStore.addNotification(notification);
+        },
+      ),
     );
   }
 
@@ -242,8 +258,11 @@ export default class YaosExtensionPlugin extends Plugin {
     }
   }
 
-  private async openFileAndComment(fileId: string, commentId: string): Promise<void> {
+  private async openFileAndComment(fileId: string, commentId?: string): Promise<void> {
     await this.app.workspace.openLinkText(fileId, "");
+
+    if (!commentId) return;
+
     await this.refreshCommentView();
 
     const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);

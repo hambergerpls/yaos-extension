@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NotificationStore } from "./notificationStore";
-import type { Notification } from "../comments/types";
+import type { Notification } from "./types";
 import type { LocalNotificationState } from "./notificationStore";
 
 function makeVault(files: Record<string, string>) {

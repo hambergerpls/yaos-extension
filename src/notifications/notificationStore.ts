@@ -1,5 +1,5 @@
 import { Vault } from "obsidian";
-import type { Notification } from "../comments/types";
+import type { Notification } from "./types";
 import { log } from "../logger";
 
 const NOTIFICATIONS_FOLDER = ".yaos-extension";

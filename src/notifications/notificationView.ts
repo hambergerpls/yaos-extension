@@ -1,20 +1,20 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import type { NotificationStore } from "./notificationStore";
-import type { Notification } from "../comments/types";
+import type { Notification } from "./types";
 
 export const NOTIFICATIONS_VIEW_TYPE = "yaos-extension-notifications";
 
 export class NotificationView extends ItemView {
   private store: NotificationStore;
   private deviceName: string;
-  private onOpenFile: (fileId: string, commentId: string) => void;
+  private onOpenFile: (fileId: string, commentId?: string) => void;
   private notifications: Notification[] = [];
 
   constructor(
     leaf: WorkspaceLeaf,
     store: NotificationStore,
     deviceName: string,
-    onOpenFile: (fileId: string, commentId: string) => void,
+    onOpenFile: (fileId: string, commentId?: string) => void,
   ) {
     super(leaf);
     this.store = store;

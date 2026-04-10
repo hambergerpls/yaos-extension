@@ -30,14 +30,16 @@ function findMentionQuery(
 export class EditorMentionPlugin {
   view: EditorView;
   getPeers: () => KnownDevice[];
+  onMention: ((peerName: string) => void) | undefined;
   query: MentionQuery | null = null;
   filteredPeers: KnownDevice[] = [];
   activeIndex = 0;
   dropdown: HTMLElement | null = null;
 
-  constructor(view: EditorView, getPeers: () => KnownDevice[]) {
+  constructor(view: EditorView, getPeers: () => KnownDevice[], onMention?: (peerName: string) => void) {
     this.view = view;
     this.getPeers = getPeers;
+    this.onMention = onMention;
   }
 
   update(update: ViewUpdate) {
@@ -145,6 +147,8 @@ export class EditorMentionPlugin {
 
     log("editorMention: selected peer %s", peer.name);
 
+    this.onMention?.(peer.name);
+
     this.closeDropdown();
   }
 
@@ -189,11 +193,12 @@ export class EditorMentionPlugin {
 
 export function editorMentionExtension(
   getPeers: () => KnownDevice[],
+  onMention?: (peerName: string) => void,
 ) {
   const plugin = ViewPlugin.fromClass(
     class extends EditorMentionPlugin {
       constructor(view: EditorView) {
-        super(view, getPeers);
+        super(view, getPeers, onMention);
       }
     },
     {
