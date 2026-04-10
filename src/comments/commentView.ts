@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { CommentStore } from "./commentStore";
-import { MentionSuggest } from "./mentionSuggest";
+import { MentionSuggest } from "../mentions/mentionSuggest";
 import type { RemotePeer } from "../yaosApi";
 import type { CommentThread } from "./types";
 

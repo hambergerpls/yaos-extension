@@ -13,7 +13,7 @@ import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
 import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
 import { log } from "./logger";
-import { editorMentionExtension } from "./comments/editorMentionPlugin";
+import { editorMentionExtension } from "./mentions/editorMentionPlugin";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;

@@ -19,7 +19,10 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |     +-- commentView.ts     (Obsidian ItemView: sidebar panel)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
+  |
+  +-- mentions/
   |     +-- mentionSuggest.ts  (@mention autocomplete in textareas)
+  |     +-- editorMentionPlugin.ts (CM6 ViewPlugin + keymap for @mention in editor)
   |
   +-- notifications/
         +-- notificationStore.ts  (Read/write notifications.jsonl + local read state)
@@ -33,17 +36,18 @@ Direct import relationships:
 
 | Module             | Imports from                        |
 |--------------------|-------------------------------------|
-| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, notifications/* |
+| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, mentions/*, notifications/* |
 | `presenceTracker`  | yaosApi                             |
 | `statusBar`        | yaosApi (types only), settings (types only) |
 | `yaosApi`          | obsidian (`App` only)               |
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
 | `comments/commentStore` | comments/types, obsidian (`Vault`) |
-| `comments/commentView` | comments/commentStore, comments/mentionSuggest, yaosApi (types), obsidian view APIs |
+| `comments/commentView` | comments/commentStore, mentions/mentionSuggest, yaosApi (types), obsidian view APIs |
 | `comments/commentCommands` | obsidian APIs |
 | `comments/commentDecorations` | comments/types |
-| `comments/mentionSuggest` | yaosApi (types only) |
+| `mentions/mentionSuggest` | yaosApi (types only) |
+| `mentions/editorMentionPlugin` | yaosApi (types only), @codemirror/view, @codemirror/state |
 | `notifications/notificationStore` | comments/types, obsidian (`Vault`) |
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
 | `notifications/notificationHelpers` | comments/types |
@@ -278,7 +282,7 @@ Exports `findRangeInDocument(doc, rangeText, rangeContext, rangeOffset)` -- pure
 function that locates commented text ranges using text matching and context
 disambiguation. Returns `{from, to} | null`.
 
-### comments/mentionSuggest.ts -- @mention autocomplete
+### mentions/mentionSuggest.ts -- @mention autocomplete
 
 `MentionSuggest` class that attaches to a textarea element. On `@` keystroke,
 shows a dropdown of connected peers filtered by typed prefix. Keyboard navigation
