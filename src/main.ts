@@ -5,13 +5,15 @@ import {
 } from "./settings";
 import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
-import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, type RemotePeer, type KnownDevice } from "./yaosApi";
+import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
 import { CommentStore } from "./comments/commentStore";
 import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
 import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
 import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
+import { DeviceStore } from "./deviceStore";
+import type { DeviceRegistry } from "./deviceStore";
 import { log } from "./logger";
 import { editorMentionExtension } from "./mentions/editorMentionPlugin";
 
@@ -22,6 +24,8 @@ export default class YaosExtensionPlugin extends Plugin {
   statusBarEl: HTMLElement | null = null;
   commentStore: CommentStore | null = null;
   notificationStore: NotificationStore | null = null;
+  deviceStore: DeviceStore | null = null;
+  deviceRegistry: DeviceRegistry = {};
 
   async onload() {
     await this.loadSettings();
@@ -53,6 +57,9 @@ export default class YaosExtensionPlugin extends Plugin {
     );
     await this.notificationStore.init();
 
+    this.deviceStore = new DeviceStore(this.app.vault);
+    this.deviceRegistry = await this.deviceStore.load();
+
     if (this.settings.showComments) {
       this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
         return new CommentView(leaf, this.commentStore!, {
@@ -63,7 +70,7 @@ export default class YaosExtensionPlugin extends Plugin {
           onDelete: (targetId: string) => this.handleDelete(targetId),
           onDeleteReply: (targetId: string) => this.handleDelete(targetId),
           getPeers: () => {
-            return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null);
+            return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
           },
         });
       });
@@ -112,6 +119,14 @@ export default class YaosExtensionPlugin extends Plugin {
       );
     }
 
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file.path === ".yaos-extension/devices.json") {
+          this.refreshDeviceRegistry();
+        }
+      }),
+    );
+
     if (!isYaosAvailable(this.app)) {
       this.statusBar.update([], false, "");
       new Notice("YAOS Extension: YAOS plugin not found. Please install and enable YAOS first.");
@@ -120,13 +135,15 @@ export default class YaosExtensionPlugin extends Plugin {
       this.tracker.start((peers: RemotePeer[]) => {
         this.onPresenceChange(peers);
       });
+
+      this.registerSelfDevice();
     }
 
     this.addSettingTab(new YaosExtensionSettingTab(this.app, this));
 
     this.registerEditorExtension(
       editorMentionExtension(() => {
-        return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null);
+        return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
       }),
     );
   }
@@ -162,6 +179,13 @@ export default class YaosExtensionPlugin extends Plugin {
       ? await this.notificationStore.getUnreadCount(localName)
       : undefined;
     this.statusBar?.update(peers, isConnected, localName, unreadCount);
+
+    if (this.deviceStore) {
+      for (const peer of peers) {
+        await this.deviceStore.registerDevice(peer.name, peer.color);
+      }
+      this.deviceRegistry = await this.deviceStore.load();
+    }
   }
 
   private getDeviceInfo(): DeviceInfo {
@@ -173,6 +197,18 @@ export default class YaosExtensionPlugin extends Plugin {
       if (user?.color) color = user.color;
     }
     return { name: getLocalDeviceName(this.app), color };
+  }
+
+  private async registerSelfDevice(): Promise<void> {
+    if (!this.deviceStore) return;
+    const info = this.getDeviceInfo();
+    await this.deviceStore.registerDevice(info.name, info.color);
+    this.deviceRegistry = await this.deviceStore.load();
+  }
+
+  private async refreshDeviceRegistry(): Promise<void> {
+    if (!this.deviceStore) return;
+    this.deviceRegistry = await this.deviceStore.load();
   }
 
   private getActiveFilePath(): string | null {

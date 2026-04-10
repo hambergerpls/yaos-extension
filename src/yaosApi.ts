@@ -109,25 +109,11 @@ export function getLocalDeviceName(app: App): string {
   return settings?.deviceName || "Unknown";
 }
 
-export function getDeviceRegistry(app: App): Map<string, DeviceRecord> | null {
-  const plugin = getYaosPlugin(app);
-  if (!plugin) return null;
-
-  const vaultSync = (plugin as any)?.vaultSync;
-  if (!vaultSync) return null;
-
-  const devices = (vaultSync as any)?.devices;
-  if (!devices) return null;
-
-  const result = new Map<string, DeviceRecord>();
-  for (const [name, record] of devices) {
-    result.set(name, { ...record });
-  }
-  return result;
-}
-
-export function getAllKnownDevices(app: App, awareness: AwarenessLike | null): KnownDevice[] {
-  const registry = getDeviceRegistry(app);
+export function getAllKnownDevices(
+  app: App,
+  awareness: AwarenessLike | null,
+  registry: Record<string, DeviceRecord> | null,
+): KnownDevice[] {
   const onlinePeers = awareness ? getRemotePeers(awareness) : [];
   const onlineNames = new Set(onlinePeers.map(p => p.name));
 
@@ -145,7 +131,7 @@ export function getAllKnownDevices(app: App, awareness: AwarenessLike | null): K
 
   if (registry) {
     const localName = getLocalDeviceName(app);
-    for (const [name, record] of registry) {
+    for (const [name, record] of Object.entries(registry)) {
       if (onlineNames.has(name)) continue;
       if (name === localName) continue;
       devices.push({
