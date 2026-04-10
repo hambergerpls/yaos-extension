@@ -12,18 +12,21 @@ export class PresenceStatusBar {
   private statusBarEl: HTMLElement;
   private settings: YaosExtensionSettings;
   private tooltipEl: HTMLElement | null = null;
+  private onBadgeClick?: () => void;
 
-  constructor(statusBarEl: HTMLElement, settings: YaosExtensionSettings) {
+  constructor(statusBarEl: HTMLElement, settings: YaosExtensionSettings, onBadgeClick?: () => void) {
     this.statusBarEl = statusBarEl;
     this.settings = settings;
+    this.onBadgeClick = onBadgeClick;
     this.statusBarEl.classList.add("yaos-extension-statusbar");
   }
 
-  update(peers: RemotePeer[], isConnected: boolean, _localDeviceName: string): void {
+  update(peers: RemotePeer[], isConnected: boolean, _localDeviceName: string, unreadCount?: number): void {
     this.statusBarEl.textContent = "";
 
     if (!isConnected && peers.length === 0) {
       this.renderDisconnected();
+      this.renderBadge(unreadCount);
       return;
     }
 
@@ -33,6 +36,7 @@ export class PresenceStatusBar {
 
     if (peers.length === 0 && isConnected) {
       this.statusBarEl.appendChild(createEl("span", undefined, "1 device online"));
+      this.renderBadge(unreadCount);
       return;
     }
 
@@ -58,6 +62,8 @@ export class PresenceStatusBar {
       }
       this.statusBarEl.appendChild(peersContainer);
     }
+
+    this.renderBadge(unreadCount);
   }
 
   private renderDisconnected(): void {
@@ -65,6 +71,20 @@ export class PresenceStatusBar {
     dot.setAttribute("aria-label", "Sync disconnected");
     this.statusBarEl.appendChild(dot);
     this.statusBarEl.appendChild(createEl("span", undefined, "Not synced"));
+  }
+
+  private renderBadge(unreadCount?: number): void {
+    if (unreadCount && unreadCount > 0) {
+      const badge = createEl("span", "yaos-extension-notification-badge", String(unreadCount));
+      badge.setAttribute("aria-label", `${unreadCount} unread notifications`);
+      if (this.onBadgeClick) {
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.onBadgeClick!();
+        });
+      }
+      this.statusBarEl.appendChild(badge);
+    }
   }
 
   private showTooltip(evt: MouseEvent, name: string, color: string, hasCursor: boolean): void {

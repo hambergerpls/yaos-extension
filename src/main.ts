@@ -9,6 +9,9 @@ import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, t
 import { CommentStore } from "./comments/commentStore";
 import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
+import { NotificationStore } from "./notifications/notificationStore";
+import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
+import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -16,6 +19,7 @@ export default class YaosExtensionPlugin extends Plugin {
   statusBar: PresenceStatusBar | null = null;
   statusBarEl: HTMLElement | null = null;
   commentStore: CommentStore | null = null;
+  notificationStore: NotificationStore | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -23,7 +27,9 @@ export default class YaosExtensionPlugin extends Plugin {
     this.applyCursorNames();
 
     this.statusBarEl = this.addStatusBarItem();
-    this.statusBar = new PresenceStatusBar(this.statusBarEl, this.settings);
+    this.statusBar = new PresenceStatusBar(this.statusBarEl, this.settings, () => {
+      this.openNotificationsView();
+    });
 
     if (!this.settings.showStatusBar) {
       this.statusBarEl.style.display = "none";
@@ -32,12 +38,32 @@ export default class YaosExtensionPlugin extends Plugin {
     this.commentStore = new CommentStore(this.app.vault);
     await this.commentStore.ensureFolder();
 
+    this.notificationStore = new NotificationStore(
+      this.app.vault,
+      async () => {
+        const data = await this.loadData();
+        return { readNotificationIds: (data as any)?.readNotificationIds ?? [] };
+      },
+      async (state) => {
+        const data = (await this.loadData()) as any;
+        await this.saveData({ ...data, readNotificationIds: state.readNotificationIds });
+      },
+    );
+    await this.notificationStore.init();
+
     if (this.settings.showComments) {
       this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
         return new CommentView(leaf, this.commentStore!, {
+          localDeviceName: getLocalDeviceName(this.app),
           onAddComment: (text: string) => this.handleAddComment(text),
           onAddReply: (commentId: string, text: string) => this.handleAddReply(commentId, text),
           onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
+          onDelete: (targetId: string) => this.handleDelete(targetId),
+          onDeleteReply: (targetId: string) => this.handleDelete(targetId),
+          getPeers: () => {
+            const awareness = this.tracker?.currentAwareness;
+            return awareness ? getRemotePeers(awareness) : [];
+          },
         });
       });
 
@@ -60,6 +86,31 @@ export default class YaosExtensionPlugin extends Plugin {
       );
     }
 
+    if (this.settings.showNotifications && this.notificationStore) {
+      this.registerView(NOTIFICATIONS_VIEW_TYPE, (leaf) => {
+        return new NotificationView(
+          leaf,
+          this.notificationStore!,
+          getLocalDeviceName(this.app),
+          (fileId, commentId) => this.openFileAndComment(fileId, commentId),
+        );
+      });
+
+      this.addCommand({
+        id: "open-notifications",
+        name: "Open notifications",
+        callback: () => this.openNotificationsView(),
+      });
+
+      this.registerEvent(
+        this.app.vault.on("modify", (file) => {
+          if (file.path === ".yaos-extension/notifications.jsonl") {
+            this.refreshNotifications();
+          }
+        }),
+      );
+    }
+
     if (!isYaosAvailable(this.app)) {
       this.statusBar.update([], false, "");
       new Notice("YAOS Extension: YAOS plugin not found. Please install and enable YAOS first.");
@@ -78,6 +129,7 @@ export default class YaosExtensionPlugin extends Plugin {
     this.statusBar?.destroy();
     document.body.classList.remove("yaos-extension-names");
     document.querySelectorAll(".yaos-extension-tooltip").forEach((el) => el.remove());
+    document.querySelectorAll(".yaos-extension-mention-dropdown").forEach((el) => el.remove());
   }
 
   async loadSettings() {
@@ -96,10 +148,13 @@ export default class YaosExtensionPlugin extends Plugin {
     }
   }
 
-  private onPresenceChange(peers: RemotePeer[]) {
+  private async onPresenceChange(peers: RemotePeer[]) {
     const isConnected = isYaosConnected(this.app);
     const localName = getLocalDeviceName(this.app);
-    this.statusBar?.update(peers, isConnected, localName);
+    const unreadCount = this.settings.showNotifications && this.notificationStore
+      ? await this.notificationStore.getUnreadCount(localName)
+      : undefined;
+    this.statusBar?.update(peers, isConnected, localName, unreadCount);
   }
 
   private getDeviceInfo(): DeviceInfo {
@@ -130,6 +185,53 @@ export default class YaosExtensionPlugin extends Plugin {
     }
   }
 
+  private async openNotificationsView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(NOTIFICATIONS_VIEW_TYPE);
+    if (existing.length > 0) {
+      this.app.workspace.revealLeaf(existing[0]!);
+      return;
+    }
+
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: NOTIFICATIONS_VIEW_TYPE, active: true });
+      this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  private async openFileAndComment(fileId: string, commentId: string): Promise<void> {
+    await this.app.workspace.openLinkText(fileId, "");
+    await this.refreshCommentView();
+
+    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    if (leaves.length === 0) {
+      const leaf = this.app.workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({ type: COMMENTS_VIEW_TYPE, active: true });
+      }
+    }
+  }
+
+  private async refreshNotifications(): Promise<void> {
+    const localName = getLocalDeviceName(this.app);
+    const unreadCount = await this.notificationStore?.getUnreadCount(localName);
+
+    const leaves = this.app.workspace.getLeavesOfType(NOTIFICATIONS_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof NotificationView) {
+        await leaf.view.refresh();
+      }
+    }
+
+    if (this.tracker?.isReady) {
+      const awareness = this.tracker.currentAwareness;
+      if (awareness) {
+        const peers = getRemotePeers(awareness);
+        this.statusBar?.update(peers, isYaosConnected(this.app), localName, unreadCount);
+      }
+    }
+  }
+
   private async handleAddComment(text: string): Promise<void> {
     const filePath = this.getActiveFilePath();
     if (!filePath || !this.commentStore) return;
@@ -153,9 +255,10 @@ export default class YaosExtensionPlugin extends Plugin {
       }
     }
 
+    const commentId = crypto.randomUUID();
     await this.commentStore.addComment(filePath, {
       type: "comment",
-      id: crypto.randomUUID(),
+      id: commentId,
       text,
       author: deviceInfo.name,
       authorColor: deviceInfo.color,
@@ -168,6 +271,7 @@ export default class YaosExtensionPlugin extends Plugin {
       mentions,
     });
 
+    await this.generateNotificationsForComment(commentId, filePath, text, mentions, deviceInfo.name);
     await this.refreshCommentView();
   }
 
@@ -178,9 +282,10 @@ export default class YaosExtensionPlugin extends Plugin {
     const deviceInfo = this.getDeviceInfo();
     const mentions = CommentStore.extractMentions(text);
 
+    const replyId = crypto.randomUUID();
     await this.commentStore.addReply(filePath, {
       type: "reply",
-      id: crypto.randomUUID(),
+      id: replyId,
       commentId,
       text,
       author: deviceInfo.name,
@@ -189,6 +294,7 @@ export default class YaosExtensionPlugin extends Plugin {
       mentions,
     });
 
+    await this.generateNotificationsForReply(commentId, replyId, filePath, text, mentions, deviceInfo.name);
     await this.refreshCommentView();
   }
 
@@ -199,6 +305,85 @@ export default class YaosExtensionPlugin extends Plugin {
     const deviceInfo = this.getDeviceInfo();
     await this.commentStore.resolveComment(filePath, commentId, resolved, deviceInfo.name);
     await this.refreshCommentView();
+  }
+
+  private async handleDelete(targetId: string): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    const threads = await this.commentStore.getThreadsForFile(filePath);
+    const isOwner = threads.some(
+      t => (t.comment.id === targetId && t.comment.author === deviceInfo.name) ||
+        t.replies.some(r => r.id === targetId && r.author === deviceInfo.name),
+    );
+    if (!isOwner) return;
+
+    await this.commentStore.deleteEntry(filePath, targetId, deviceInfo.name);
+    await this.refreshCommentView();
+  }
+
+  private async generateNotificationsForComment(
+    commentId: string,
+    filePath: string,
+    text: string,
+    mentions: string[],
+    fromDevice: string,
+  ): Promise<void> {
+    if (!this.notificationStore || mentions.length === 0) return;
+
+    const notifications = createMentionNotifications({
+      commentId,
+      fileId: filePath,
+      fromDevice,
+      mentions,
+      preview: text,
+    });
+
+    for (const notif of notifications) {
+      await this.notificationStore.addNotification(notif);
+    }
+  }
+
+  private async generateNotificationsForReply(
+    commentId: string,
+    replyId: string,
+    filePath: string,
+    text: string,
+    mentions: string[],
+    fromDevice: string,
+  ): Promise<void> {
+    if (!this.notificationStore) return;
+
+    const threads = await this.commentStore!.getThreadsForFile(filePath);
+    const thread = threads.find(t => t.comment.id === commentId);
+    if (!thread) return;
+
+    if (mentions.length > 0) {
+      const mentionNotifs = createMentionNotifications({
+        commentId,
+        replyId,
+        fileId: filePath,
+        fromDevice,
+        mentions,
+        preview: text,
+      });
+      for (const notif of mentionNotifs) {
+        await this.notificationStore.addNotification(notif);
+      }
+    }
+
+    const replyNotif = createReplyNotification({
+      commentId,
+      replyId,
+      fileId: filePath,
+      fromDevice,
+      commentAuthor: thread.comment.author,
+      preview: text,
+    });
+    if (replyNotif) {
+      await this.notificationStore.addNotification(replyNotif);
+    }
   }
 }
 

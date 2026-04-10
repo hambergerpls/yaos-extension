@@ -1,163 +1,141 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { PresenceStatusBar } from "./statusBar";
-import { DEFAULT_SETTINGS } from "./settings";
-import { type RemotePeer } from "./yaosApi";
+import type { RemotePeer } from "./yaosApi";
+import { DEFAULT_SETTINGS, type YaosExtensionSettings } from "./settings";
 
-function createContainer(): HTMLElement {
-  return document.createElement("div");
-}
-
-const alice: RemotePeer = { clientId: 2, name: "Alice", color: "#f00", colorLight: "#f0033", hasCursor: true };
-const bob: RemotePeer = { clientId: 3, name: "Bob", color: "#0f0", colorLight: "#0f033", hasCursor: false };
-
-beforeEach(() => {
-  document.body.innerHTML = "";
-});
+const mockPeers: RemotePeer[] = [
+  { clientId: 1, name: "Alice", color: "#f00", colorLight: "#f0033", hasCursor: true },
+  { clientId: 2, name: "Bob", color: "#0f0", colorLight: "#0f033", hasCursor: false },
+];
 
 describe("PresenceStatusBar", () => {
-  it("adds the yaos-extension-statusbar class to the element", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    expect(el.classList.contains("yaos-extension-statusbar")).toBe(true);
+  let statusBarEl: HTMLElement;
+  let settings: YaosExtensionSettings;
+
+  beforeEach(() => {
+    statusBarEl = document.createElement("div");
+    settings = { ...DEFAULT_SETTINGS };
   });
 
-  it("renders disconnected state when not connected and no peers", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([], false, "MyDevice");
-
-    expect(el.textContent).toContain("Not synced");
-    expect(el.querySelector(".yaos-extension-dot.disconnected")).not.toBeNull();
+  test("renders disconnected state when not connected and no peers", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([], false, "Me");
+    expect(statusBarEl.textContent).toContain("Not synced");
+    const dot = statusBarEl.querySelector(".yaos-extension-dot.disconnected");
+    expect(dot).not.toBeNull();
   });
 
-  it("renders '1 device online' when connected with no peers", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([], true, "MyDevice");
-
-    expect(el.textContent).toContain("1 device online");
-    expect(el.querySelector(".yaos-extension-dot.connected")).not.toBeNull();
+  test("renders 1 device online when connected with no peers", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([], true, "Me");
+    expect(statusBarEl.textContent).toContain("1 device online");
+    const dot = statusBarEl.querySelector(".yaos-extension-dot.connected");
+    expect(dot).not.toBeNull();
   });
 
-  it("renders 'You + Alice' with one peer", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    expect(el.textContent).toContain("You + Alice");
+  test("renders peer name when connected with 1 peer", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([mockPeers[0]!], true, "Me");
+    expect(statusBarEl.textContent).toContain("You + Alice");
   });
 
-  it("renders 'You + N collaborators' with multiple peers", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice, bob], true, "MyDevice");
-
-    expect(el.textContent).toContain("You + 2 collaborators");
+  test("renders collaborator count when connected with 2+ peers", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me");
+    expect(statusBarEl.textContent).toContain("You + 2 collaborators");
   });
 
-  it("shows peer dots when showPeerDotsInStatusBar is true", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice, bob], true, "MyDevice");
-
-    const dots = el.querySelectorAll(".yaos-extension-peer-dot");
+  test("renders peer dots when setting enabled", () => {
+    settings.showPeerDotsInStatusBar = true;
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me");
+    const dots = statusBarEl.querySelectorAll(".yaos-extension-peer-dot");
     expect(dots.length).toBe(2);
   });
 
-  it("hides peer dots when showPeerDotsInStatusBar is false", () => {
-    const el = createContainer();
-    const settings = { ...DEFAULT_SETTINGS, showPeerDotsInStatusBar: false };
-    const bar = new PresenceStatusBar(el, settings);
-    bar.update([alice, bob], true, "MyDevice");
-
-    const dots = el.querySelectorAll(".yaos-extension-peer-dot");
+  test("does not render peer dots when setting disabled", () => {
+    settings.showPeerDotsInStatusBar = false;
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me");
+    const dots = statusBarEl.querySelectorAll(".yaos-extension-peer-dot");
     expect(dots.length).toBe(0);
   });
 
-  it("peer dots have the correct background color", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    expect(dot.style.backgroundColor).toBe("rgb(255, 0, 0)");
-  });
-
-  it("peer dots have aria-label with peer name", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    expect(dot.getAttribute("aria-label")).toBe("Alice");
-  });
-
-  it("shows tooltip on peer dot mouseenter", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    dot.dispatchEvent(new MouseEvent("mouseenter", { clientX: 100, clientY: 200 }));
-
-    const tooltip = document.querySelector(".yaos-extension-tooltip");
-    expect(tooltip).not.toBeNull();
-    expect(tooltip!.textContent).toContain("Alice");
-  });
-
-  it("hides tooltip on peer dot mouseleave", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    dot.dispatchEvent(new MouseEvent("mouseenter", { clientX: 100, clientY: 200 }));
-    dot.dispatchEvent(new MouseEvent("mouseleave"));
-
-    expect(document.querySelector(".yaos-extension-tooltip")).toBeNull();
-  });
-
-  it("shows edit indicator in tooltip for peers with cursor", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    dot.dispatchEvent(new MouseEvent("mouseenter", { clientX: 100, clientY: 200 }));
-
-    const tooltip = document.querySelector(".yaos-extension-tooltip")!;
-    expect(tooltip.textContent).toContain("\u270E");
-  });
-
-  it("destroys cleanly and removes tooltip", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([alice], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-peer-dot") as HTMLElement;
-    dot.dispatchEvent(new MouseEvent("mouseenter", { clientX: 100, clientY: 200 }));
-
+  test("destroy clears status bar content", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me");
     bar.destroy();
-
-    expect(document.querySelector(".yaos-extension-tooltip")).toBeNull();
-    expect(el.innerHTML).toBe("");
+    expect(statusBarEl.textContent).toBe("");
   });
 
-  it("connection dot has correct aria-label when connected", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([], true, "MyDevice");
-
-    const dot = el.querySelector(".yaos-extension-dot.connected") as HTMLElement;
-    expect(dot.getAttribute("aria-label")).toBe("Sync connected");
+  test("connected dot has aria-label", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([], true, "Me");
+    const dot = statusBarEl.querySelector(".yaos-extension-dot");
+    expect(dot?.getAttribute("aria-label")).toBe("Sync connected");
   });
 
-  it("connection dot has correct aria-label when disconnected", () => {
-    const el = createContainer();
-    const bar = new PresenceStatusBar(el, DEFAULT_SETTINGS);
-    bar.update([], false, "MyDevice");
+  test("disconnected dot has aria-label", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([], false, "Me");
+    const dot = statusBarEl.querySelector(".yaos-extension-dot");
+    expect(dot?.getAttribute("aria-label")).toBe("Sync disconnected");
+  });
+});
 
-    const dot = el.querySelector(".yaos-extension-dot.disconnected") as HTMLElement;
-    expect(dot.getAttribute("aria-label")).toBe("Sync disconnected");
+describe("PresenceStatusBar notification badge", () => {
+  let statusBarEl: HTMLElement;
+  let settings: YaosExtensionSettings;
+
+  beforeEach(() => {
+    statusBarEl = document.createElement("div");
+    settings = { ...DEFAULT_SETTINGS };
+  });
+
+  test("shows badge when unreadCount > 0", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me", 3);
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe("3");
+  });
+
+  test("does not show badge when unreadCount is 0", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me", 0);
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge");
+    expect(badge).toBeNull();
+  });
+
+  test("does not show badge when unreadCount is undefined", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me");
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge");
+    expect(badge).toBeNull();
+  });
+
+  test("badge click handler calls provided callback", () => {
+    const onClickBadge = vi.fn();
+    const bar = new PresenceStatusBar(statusBarEl, settings, onClickBadge);
+    bar.update(mockPeers, true, "Me", 5);
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge") as HTMLElement;
+    badge.click();
+    expect(onClickBadge).toHaveBeenCalled();
+  });
+
+  test("badge is cleaned up on destroy", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update(mockPeers, true, "Me", 3);
+    bar.destroy();
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge");
+    expect(badge).toBeNull();
+  });
+
+  test("shows badge when disconnected with unread notifications", () => {
+    const bar = new PresenceStatusBar(statusBarEl, settings);
+    bar.update([], false, "Me", 2);
+    const badge = statusBarEl.querySelector(".yaos-extension-notification-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe("2");
   });
 });

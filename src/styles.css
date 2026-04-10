@@ -290,10 +290,42 @@
   color: var(--text-normal);
 }
 
+.yaos-extension-delete-btn,
+.yaos-extension-delete-reply-btn {
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller, 11px);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.yaos-extension-delete-btn:hover,
+.yaos-extension-delete-reply-btn:hover {
+  background: var(--background-modifier-error, #e5534b);
+  color: var(--text-on-accent, white);
+  border-color: var(--background-modifier-error, #e5534b);
+}
+
 .yaos-extension-comment-replies {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--background-modifier-border);
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.2s ease-out, opacity 0.15s ease-out, padding-top 0.2s ease-out;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.yaos-extension-comment-replies.expanded {
+  max-height: 500px;
+  opacity: 1;
+  padding-top: 8px;
+  margin-top: 8px;
 }
 
 .yaos-extension-reply {
@@ -391,4 +423,117 @@
 
 .yaos-extension-notification-card.read {
   color: var(--text-muted);
+}
+
+.yaos-extension-notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yaos-extension-notification-title {
+  font-weight: 600;
+  font-size: var(--font-ui-medium, 14px);
+}
+
+.yaos-extension-notification-mark-all {
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller, 11px);
+}
+
+.yaos-extension-notification-mark-all:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.yaos-extension-notification-kind-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.yaos-extension-notification-from {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.yaos-extension-notification-preview {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small, 13px);
+  margin-bottom: 4px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yaos-extension-notification-file {
+  font-size: var(--font-ui-smaller, 11px);
+  color: var(--text-faint);
+}
+
+.yaos-extension-notification-unread-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--interactive-accent, #7f6df2);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* ============================================================
+ * YAOS Extension — Mention Suggest Dropdown
+ * ============================================================ */
+
+.yaos-extension-mention-dropdown {
+  position: fixed;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  min-width: 160px;
+}
+
+.yaos-extension-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: var(--font-ui-small, 13px);
+  color: var(--text-normal);
+}
+
+.yaos-extension-mention-item:hover,
+.yaos-extension-mention-item.active {
+  background: var(--background-secondary);
+}
+
+.yaos-extension-mention-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
 }

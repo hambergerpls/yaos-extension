@@ -1,5 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { CommentStore } from "./commentStore";
+import { MentionSuggest } from "./mentionSuggest";
+import type { RemotePeer } from "../yaosApi";
 import type { CommentThread } from "./types";
 
 export const COMMENTS_VIEW_TYPE = "yaos-extension-comments";
@@ -7,28 +9,42 @@ export const COMMENTS_VIEW_TYPE = "yaos-extension-comments";
 export class CommentView extends ItemView {
   private store: CommentStore;
   private threads: CommentThread[] = [];
+  private localDeviceName: string;
   private onOpenThread?: (threadId: string) => void;
   private onAddComment?: (text: string) => void;
   private onAddReply?: (commentId: string, text: string) => void;
   private onResolve?: (commentId: string, resolved: boolean) => void;
+  private onDelete?: (commentId: string) => void;
+  private onDeleteReply?: (replyId: string) => void;
+  private getPeers?: () => RemotePeer[];
+  private mentionSuggests: MentionSuggest[] = [];
+  private replyMentionSuggests: MentionSuggest[] = [];
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
     store: CommentStore,
     callbacks?: {
+      localDeviceName?: string;
       onOpenThread?: (threadId: string) => void;
       onAddComment?: (text: string) => void;
       onAddReply?: (commentId: string, text: string) => void;
       onResolve?: (commentId: string, resolved: boolean) => void;
+      onDelete?: (commentId: string) => void;
+      onDeleteReply?: (replyId: string) => void;
+      getPeers?: () => RemotePeer[];
     },
   ) {
     super(leaf);
     this.store = store;
+    this.localDeviceName = callbacks?.localDeviceName ?? "";
     this.onOpenThread = callbacks?.onOpenThread;
     this.onAddComment = callbacks?.onAddComment;
     this.onAddReply = callbacks?.onAddReply;
     this.onResolve = callbacks?.onResolve;
+    this.onDelete = callbacks?.onDelete;
+    this.onDeleteReply = callbacks?.onDeleteReply;
+    this.getPeers = callbacks?.getPeers;
   }
 
   getViewType(): string {
@@ -48,6 +64,7 @@ export class CommentView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.destroyMentionSuggests();
     this.contentEl.empty();
   }
 
@@ -66,6 +83,7 @@ export class CommentView extends ItemView {
   }
 
   private async render(): Promise<void> {
+    this.destroyMentionSuggests();
     this.contentEl.empty();
     this.contentEl.addClass("yaos-extension-comment-view");
 
@@ -104,6 +122,10 @@ export class CommentView extends ItemView {
       textarea.value = `> ${this.pendingSelection.rangeText}\n`;
       textarea.focus();
       this.pendingSelection = null;
+    }
+
+    if (this.getPeers) {
+      this.mentionSuggests.push(new MentionSuggest(textarea, this.getPeers));
     }
 
     const submitBtn = inputContainer.createEl("button", { cls: "yaos-extension-comment-submit", text: "Comment" });
@@ -148,18 +170,31 @@ export class CommentView extends ItemView {
       this.onResolve?.(thread.comment.id, !thread.comment.resolved);
     });
 
+    if (thread.comment.author === this.localDeviceName) {
+      const deleteBtn = actions.createEl("button", {
+        cls: "yaos-extension-delete-btn",
+        text: "Delete",
+      });
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.onDelete?.(thread.comment.id);
+      });
+    }
+
     const repliesContainer = card.createDiv({ cls: "yaos-extension-comment-replies" });
-    repliesContainer.style.display = "none";
 
     let expanded = false;
     header.addEventListener("click", () => {
       expanded = !expanded;
       if (expanded) {
-        repliesContainer.style.display = "block";
         repliesContainer.empty();
         this.renderReplies(repliesContainer, thread);
+        requestAnimationFrame(() => {
+          repliesContainer.classList.add("expanded");
+        });
       } else {
-        repliesContainer.style.display = "none";
+        this.destroyReplyMentionSuggests();
+        repliesContainer.classList.remove("expanded");
       }
     });
   }
@@ -174,6 +209,16 @@ export class CommentView extends ItemView {
       dot.style.backgroundColor = reply.authorColor;
       replyMeta.createSpan({ cls: "yaos-extension-author-name", text: reply.author });
       replyMeta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(reply.createdAt) });
+      if (reply.author === this.localDeviceName) {
+        const replyDeleteBtn = replyMeta.createEl("button", {
+          cls: "yaos-extension-delete-reply-btn",
+          text: "Delete",
+        });
+        replyDeleteBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.onDeleteReply?.(reply.id);
+        });
+      }
       const replyBody = replyEl.createDiv({ cls: "yaos-extension-comment-body" });
       this.renderMentionsInto(replyBody, reply.text);
     }
@@ -190,17 +235,36 @@ export class CommentView extends ItemView {
       this.onAddReply?.(thread.comment.id, text);
       replyTextarea.value = "";
     });
+
+    if (this.getPeers) {
+      this.replyMentionSuggests.push(new MentionSuggest(replyTextarea, this.getPeers));
+    }
   }
 
   private renderMentionsInto(container: HTMLElement, text: string): void {
     const parts = text.split(/(@\w+)/g);
     for (const part of parts) {
       if (/^@\w+$/.test(part)) {
-        const strong = container.createEl("strong", { cls: "yaos-extension-mention", text: part });
+        container.createEl("strong", { cls: "yaos-extension-mention", text: part });
       } else if (part) {
         container.appendChild(document.createTextNode(part));
       }
     }
+  }
+
+  private destroyMentionSuggests(): void {
+    for (const ms of this.mentionSuggests) {
+      ms.destroy();
+    }
+    this.mentionSuggests = [];
+    this.destroyReplyMentionSuggests();
+  }
+
+  private destroyReplyMentionSuggests(): void {
+    for (const ms of this.replyMentionSuggests) {
+      ms.destroy();
+    }
+    this.replyMentionSuggests = [];
   }
 
   private formatRelativeTime(timestamp: number): string {
