@@ -1,5 +1,6 @@
 import { Vault } from "obsidian";
 import type { Notification } from "../comments/types";
+import { log } from "../logger";
 
 const NOTIFICATIONS_FOLDER = ".yaos-extension";
 const NOTIFICATIONS_FILE = `${NOTIFICATIONS_FOLDER}/notifications.jsonl`;
@@ -47,6 +48,7 @@ export class NotificationStore {
   async addNotification(notification: Notification): Promise<void> {
     await this.ensureFolder();
     const line = JSON.stringify(notification) + "\n";
+    log("notificationStore.addNotification: kind=%s target=%s from=%s id=%s", notification.kind, notification.targetDevice, notification.fromDevice, notification.id);
     await this.vault.adapter.append(NOTIFICATIONS_FILE, line);
   }
 

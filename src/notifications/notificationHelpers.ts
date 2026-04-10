@@ -1,4 +1,5 @@
 import type { Notification } from "../comments/types";
+import { log } from "../logger";
 
 export function createMentionNotifications(opts: {
   commentId: string;
@@ -8,7 +9,7 @@ export function createMentionNotifications(opts: {
   mentions: string[];
   preview: string;
 }): Notification[] {
-  return opts.mentions.map((mention) => ({
+  const result = opts.mentions.map((mention) => ({
     type: "notification" as const,
     id: crypto.randomUUID(),
     kind: "mention" as const,
@@ -20,6 +21,8 @@ export function createMentionNotifications(opts: {
     createdAt: Date.now(),
     preview: opts.preview.slice(0, 80),
   }));
+  log("createMentionNotifications: %d notifications for mentions=%o from=%s", result.length, opts.mentions, opts.fromDevice);
+  return result;
 }
 
 export function createReplyNotification(opts: {
@@ -30,8 +33,11 @@ export function createReplyNotification(opts: {
   commentAuthor: string;
   preview: string;
 }): Notification | null {
-  if (opts.fromDevice === opts.commentAuthor) return null;
-  return {
+  if (opts.fromDevice === opts.commentAuthor) {
+    log("createReplyNotification: skipped (fromDevice=%s == commentAuthor=%s)", opts.fromDevice, opts.commentAuthor);
+    return null;
+  }
+  const result = {
     type: "notification" as const,
     id: crypto.randomUUID(),
     kind: "reply" as const,
@@ -43,4 +49,6 @@ export function createReplyNotification(opts: {
     createdAt: Date.now(),
     preview: opts.preview.slice(0, 80),
   };
+  log("createReplyNotification: created reply notification from=%s to=%s", opts.fromDevice, opts.commentAuthor);
+  return result;
 }

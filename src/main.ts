@@ -12,6 +12,7 @@ import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./co
 import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
 import { createMentionNotifications, createReplyNotification } from "./notifications/notificationHelpers";
+import { log } from "./logger";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -62,7 +63,9 @@ export default class YaosExtensionPlugin extends Plugin {
           onDeleteReply: (targetId: string) => this.handleDelete(targetId),
           getPeers: () => {
             const awareness = this.tracker?.currentAwareness;
-            return awareness ? getRemotePeers(awareness) : [];
+            const peers = awareness ? getRemotePeers(awareness) : [];
+            log("main.getPeers: awareness=%s peers=%d %o", !!awareness, peers.length, peers.map(p => p.name));
+            return peers;
           },
         });
       });
@@ -215,6 +218,7 @@ export default class YaosExtensionPlugin extends Plugin {
   private async refreshNotifications(): Promise<void> {
     const localName = getLocalDeviceName(this.app);
     const unreadCount = await this.notificationStore?.getUnreadCount(localName);
+    log("refreshNotifications: localName=%s unreadCount=%s", localName, unreadCount);
 
     const leaves = this.app.workspace.getLeavesOfType(NOTIFICATIONS_VIEW_TYPE);
     for (const leaf of leaves) {
@@ -238,6 +242,7 @@ export default class YaosExtensionPlugin extends Plugin {
 
     const deviceInfo = this.getDeviceInfo();
     const mentions = CommentStore.extractMentions(text);
+    log("handleAddComment: text=%s mentions=%o author=%s", JSON.stringify(text), mentions, deviceInfo.name);
 
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     let rangeText = "";
@@ -281,6 +286,7 @@ export default class YaosExtensionPlugin extends Plugin {
 
     const deviceInfo = this.getDeviceInfo();
     const mentions = CommentStore.extractMentions(text);
+    log("handleAddReply: commentId=%s text=%s mentions=%o author=%s", commentId, JSON.stringify(text), mentions, deviceInfo.name);
 
     const replyId = crypto.randomUUID();
     await this.commentStore.addReply(filePath, {
@@ -330,7 +336,10 @@ export default class YaosExtensionPlugin extends Plugin {
     mentions: string[],
     fromDevice: string,
   ): Promise<void> {
-    if (!this.notificationStore || mentions.length === 0) return;
+    if (!this.notificationStore || mentions.length === 0) {
+      log("generateNotificationsForComment: skipped (store=%s mentions=%d)", !!this.notificationStore, mentions.length);
+      return;
+    }
 
     const notifications = createMentionNotifications({
       commentId,
@@ -340,6 +349,7 @@ export default class YaosExtensionPlugin extends Plugin {
       preview: text,
     });
 
+    log("generateNotificationsForComment: created %d mention notifications for %o", notifications.length, mentions);
     for (const notif of notifications) {
       await this.notificationStore.addNotification(notif);
     }
@@ -357,7 +367,12 @@ export default class YaosExtensionPlugin extends Plugin {
 
     const threads = await this.commentStore!.getThreadsForFile(filePath);
     const thread = threads.find(t => t.comment.id === commentId);
-    if (!thread) return;
+    if (!thread) {
+      log("generateNotificationsForReply: no thread found for commentId=%s", commentId);
+      return;
+    }
+
+    let totalNotifs = 0;
 
     if (mentions.length > 0) {
       const mentionNotifs = createMentionNotifications({
@@ -371,6 +386,7 @@ export default class YaosExtensionPlugin extends Plugin {
       for (const notif of mentionNotifs) {
         await this.notificationStore.addNotification(notif);
       }
+      totalNotifs += mentionNotifs.length;
     }
 
     const replyNotif = createReplyNotification({
@@ -383,7 +399,10 @@ export default class YaosExtensionPlugin extends Plugin {
     });
     if (replyNotif) {
       await this.notificationStore.addNotification(replyNotif);
+      totalNotifs++;
     }
+
+    log("generateNotificationsForReply: created %d notifications (mentions=%o, commentAuthor=%s, fromDevice=%s)", totalNotifs, mentions, thread.comment.author, fromDevice);
   }
 }
 

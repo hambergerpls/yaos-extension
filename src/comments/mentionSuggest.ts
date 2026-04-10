@@ -1,4 +1,5 @@
 import type { RemotePeer } from "../yaosApi";
+import { log } from "../logger";
 
 export class MentionSuggest {
   private textarea: HTMLTextAreaElement;
@@ -37,9 +38,13 @@ export class MentionSuggest {
     }
 
     const peers = this.getPeers();
+    log("mentionSuggest: getPeers returned", peers.length, "peers", peers.map(p => p.name));
+
     this.filteredPeers = peers.filter((p) =>
       p.name.toLowerCase().startsWith(query.query.toLowerCase()),
     );
+
+    log("mentionSuggest: query=%s filtered to %d peers", JSON.stringify(query.query), this.filteredPeers.length, this.filteredPeers.map(p => p.name));
 
     if (this.filteredPeers.length === 0) {
       this.closeDropdown();
@@ -104,6 +109,8 @@ export class MentionSuggest {
     const newPos = query.start + peer.name.length + 2;
     this.textarea.selectionStart = newPos;
     this.textarea.selectionEnd = newPos;
+
+    log("mentionSuggest: selected peer %s, textarea value is now %s", peer.name, JSON.stringify(this.textarea.value));
 
     this.closeDropdown();
   }

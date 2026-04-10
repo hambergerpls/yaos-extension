@@ -1,5 +1,6 @@
 import { Vault } from "obsidian";
 import type { Comment, Reply, CommentEntry, CommentThread, Deletion, ResolveEntry } from "./types";
+import { log } from "../logger";
 
 const COMMENTS_FOLDER = ".yaos-extension/comments";
 
@@ -153,6 +154,7 @@ export class CommentStore {
     while ((match = regex.exec(text)) !== null) {
       matches.push(match[1]!);
     }
+    log("commentStore.extractMentions: input=%s mentions=%o", JSON.stringify(text), matches);
     return matches;
   }
 }
