@@ -65,6 +65,16 @@ export class CommentView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    this.registerDomEvent(this.contentEl, "click", (evt: MouseEvent) => {
+      const target = evt.target as HTMLElement;
+      const link = target.closest("a.internal-link") as HTMLAnchorElement | null;
+      if (!link) return;
+      evt.preventDefault();
+      const href = link.getAttr("data-href") ?? link.getAttr("href");
+      if (href) {
+        this.app.workspace.openLinkText(href, this.currentFilePath, evt.ctrlKey || evt.metaKey);
+      }
+    });
     await this.render();
   }
 
@@ -278,7 +288,7 @@ export class CommentView extends ItemView {
     component.load();
     this.renderComponents.push(component);
     try {
-      await MarkdownRenderer.render(this.app, text, container, "", component);
+      await MarkdownRenderer.render(this.app, text, container, this.currentFilePath, component);
       if (this.renderGeneration !== generation) {
         return;
       }
