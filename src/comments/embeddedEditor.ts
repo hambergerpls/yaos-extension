@@ -92,6 +92,21 @@ function createObsidianEditor(
 
   const cleanupFns: (() => void)[] = [];
 
+  // Make the entire container area focusable: clicks on dead space (below
+  // the text content but inside the visible min-height box) should focus
+  // the editor.  We use mousedown so it fires before CM6's own handler,
+  // then defer the focus check with rAF so normal clicks on .cm-content
+  // are handled by CM6 first.
+  const focusOnDeadSpace = () => {
+    requestAnimationFrame(() => {
+      if (!cm.hasFocus) {
+        cm.focus();
+      }
+    });
+  };
+  container.addEventListener("mousedown", focusOnDeadSpace);
+  cleanupFns.push(() => container.removeEventListener("mousedown", focusOnDeadSpace));
+
   if (options.onSubmit) {
     const onSubmit = options.onSubmit;
     const enterListener = (e: KeyboardEvent) => {

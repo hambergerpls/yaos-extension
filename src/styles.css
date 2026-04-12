@@ -181,6 +181,13 @@
   max-height: 200px;
   overflow-y: auto;
   font-size: var(--font-ui-small, 13px);
+  display: flex;
+  flex-direction: column;
+  cursor: text;
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-editor {
+  flex: 1;
 }
 
 .yaos-extension-obsidian-editor-container .markdown-source-view .cm-scroller {
