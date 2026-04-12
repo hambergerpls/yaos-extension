@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, Component, WorkspaceLeaf } from "obsidian";
 import { CommentStore } from "./commentStore";
 import { createEmbeddedEditor, type EmbeddedEditorHandle } from "./embeddedEditor";
 import { editorMentionExtension } from "../mentions/editorMentionPlugin";
@@ -20,6 +20,8 @@ export class CommentView extends ItemView {
   private getPeers?: () => KnownDevice[];
   private editors: EmbeddedEditorHandle[] = [];
   private replyEditors: EmbeddedEditorHandle[] = [];
+  private renderComponents: Component[] = [];
+  private renderGeneration = 0;
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
 
   constructor(
@@ -84,6 +86,7 @@ export class CommentView extends ItemView {
   }
 
   private async render(): Promise<void> {
+    this.renderGeneration++;
     this.destroyEditors();
     this.contentEl.empty();
     this.contentEl.addClass("yaos-extension-comment-view");
@@ -126,6 +129,7 @@ export class CommentView extends ItemView {
         handle.clear();
       },
       extraExtensions: extensions,
+      app: this.app,
     });
 
     if (this.pendingSelection) {
@@ -162,7 +166,7 @@ export class CommentView extends ItemView {
     meta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(thread.comment.createdAt) });
 
     const body = card.createDiv({ cls: "yaos-extension-comment-body" });
-    this.renderMentionsInto(body, thread.comment.text);
+    void this.renderCommentBody(body, thread.comment.text);
 
     if (thread.replies.length > 0) {
       header.createSpan({ cls: "yaos-extension-reply-count", text: `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}` });
@@ -228,7 +232,7 @@ export class CommentView extends ItemView {
         });
       }
       const replyBody = replyEl.createDiv({ cls: "yaos-extension-comment-body" });
-      this.renderMentionsInto(replyBody, reply.text);
+      void this.renderCommentBody(replyBody, reply.text);
     }
 
     const replyInput = container.createDiv({ cls: "yaos-extension-reply-input" });
@@ -245,6 +249,7 @@ export class CommentView extends ItemView {
         replyHandle.clear();
       },
       extraExtensions: extensions,
+      app: this.app,
     });
 
     this.replyEditors.push(replyHandle);
@@ -258,7 +263,31 @@ export class CommentView extends ItemView {
     });
   }
 
-  private renderMentionsInto(container: HTMLElement, text: string): void {
+  private async renderCommentBody(container: HTMLElement, text: string): Promise<void> {
+    const generation = this.renderGeneration;
+    const component = new Component();
+    component.load();
+    this.renderComponents.push(component);
+    try {
+      await MarkdownRenderer.render(this.app, text, container, "", component);
+      if (this.renderGeneration !== generation) {
+        return;
+      }
+      const mentions = Array.from(container.querySelectorAll("strong"));
+      for (const el of mentions) {
+        if (/^@\w+$/.test(el.textContent ?? "")) {
+          el.addClass("yaos-extension-mention");
+        }
+      }
+    } catch {
+      if (this.renderGeneration !== generation) {
+        return;
+      }
+      this.renderMentionsIntoFallback(container, text);
+    }
+  }
+
+  private renderMentionsIntoFallback(container: HTMLElement, text: string): void {
     const parts = text.split(/(@\w+)/g);
     for (const part of parts) {
       if (/^@\w+$/.test(part)) {
@@ -275,6 +304,7 @@ export class CommentView extends ItemView {
     }
     this.editors = [];
     this.destroyReplyEditors();
+    this.destroyRenderComponents();
   }
 
   private destroyReplyEditors(): void {
@@ -282,6 +312,15 @@ export class CommentView extends ItemView {
       editor.destroy();
     }
     this.replyEditors = [];
+  }
+
+  private destroyRenderComponents(): void {
+    for (const component of this.renderComponents) {
+      try {
+        component.unload();
+      } catch {}
+    }
+    this.renderComponents = [];
   }
 
   private formatRelativeTime(timestamp: number): string {

@@ -172,6 +172,87 @@
   box-sizing: border-box;
 }
 
+/* === Obsidian editor embedded in comment sidebar === */
+.yaos-extension-obsidian-editor-container .markdown-source-view {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  min-height: 60px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-scroller {
+  padding: 4px 0;
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-content {
+  padding: 0 8px;
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-gutters {
+  display: none;
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-sizer {
+  min-height: auto;
+}
+
+.yaos-extension-obsidian-editor-container .markdown-source-view .cm-line {
+  padding: 0;
+}
+
+.yaos-extension-comment-input .yaos-extension-obsidian-editor-container {
+  margin-bottom: 4px;
+}
+
+.yaos-extension-reply-input .yaos-extension-obsidian-editor-container .markdown-source-view {
+  min-height: 40px;
+  max-height: 150px;
+}
+
+/* === Rendered markdown in comment bodies === */
+.yaos-extension-comment-body .internal-link {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.yaos-extension-comment-body .internal-link:hover {
+  text-decoration: underline;
+}
+
+.yaos-extension-comment-body .external-link {
+  color: var(--link-color);
+}
+
+.yaos-extension-comment-body code {
+  background: var(--background-secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.yaos-extension-comment-body pre {
+  background: var(--background-secondary);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.9em;
+}
+
+.yaos-extension-comment-body blockquote {
+  border-left: 3px solid var(--background-modifier-border);
+  margin: 4px 0;
+  padding-left: 8px;
+  color: var(--text-muted);
+}
+
+.yaos-extension-comment-body em,
+.yaos-extension-comment-body strong {
+  font-size: inherit;
+}
+
 .yaos-extension-comment-submit {
   margin-top: 6px;
   padding: 4px 12px;

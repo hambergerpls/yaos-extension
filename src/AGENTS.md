@@ -16,10 +16,12 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   +-- comments/
   |     +-- types.ts           (Comment, Reply, ResolveEntry, Deletion, Notification)
   |     +-- commentStore.ts    (CRUD operations on JSONL files)
-  |     +-- commentView.ts     (Obsidian ItemView: sidebar panel)
+  |     +-- commentView.ts     (Obsidian ItemView: sidebar panel, uses MarkdownRenderer)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
-  |     +-- embeddedEditor.ts  (CM6 editor factory for sidebar inputs)
+  |     +-- embeddedEditor.ts  (Editor factory: full Obsidian editor with bare CM6 fallback)
+  |     +-- editorDiscovery.ts (Runtime discovery of Obsidian's internal editor class)
+  |     +-- commentEditorOwner.ts (Proxy-based mock owner for standalone editor instances)
   |
   +-- mentions/
   |     +-- editorMentionPlugin.ts (CM6 ViewPlugin + keymap for @mention in editor + sidebar)
@@ -36,17 +38,19 @@ Direct import relationships:
 
 | Module             | Imports from                        |
 |--------------------|-------------------------------------|
-| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, mentions/*, notifications/* |
+| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, mentions/*, notifications/*, comments/editorDiscovery |
 | `presenceTracker`  | yaosApi                             |
 | `statusBar`        | yaosApi (types only), settings (types only) |
 | `yaosApi`          | obsidian (`App` only)               |
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
 | `comments/commentStore` | comments/types, obsidian (`Vault`) |
-| `comments/commentView` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian view APIs |
+| `comments/commentView` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (ItemView, MarkdownRenderer, Component) |
 | `comments/commentCommands` | obsidian APIs |
 | `comments/commentDecorations` | comments/types |
-| `comments/embeddedEditor` | @codemirror/view, @codemirror/state |
+| `comments/editorDiscovery` | obsidian (`App` only) |
+| `comments/commentEditorOwner` | obsidian (`App`, `Component`, `TFile`) |
+| `comments/embeddedEditor` | comments/editorDiscovery, comments/commentEditorOwner, obsidian (`App`), @codemirror/view, @codemirror/state |
 | `mentions/editorMentionPlugin` | yaosApi (types only), @codemirror/view, @codemirror/state |
 | `notifications/notificationStore` | comments/types, obsidian (`Vault`) |
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
@@ -270,14 +274,38 @@ Mention rendering uses DOM-safe `renderMentionsInto()` with `createTextNode`.
 Constructor receives callbacks: `onAddComment`, `onAddReply`, `onResolve`,
 `onDelete`, `onDeleteReply`, `getPeers`.
 
-### comments/embeddedEditor.ts -- CM6 editor factory
+### comments/embeddedEditor.ts -- Editor factory (Obsidian + fallback)
 
-Creates compact CM6 `EditorView` instances for use in the comment sidebar.
+Creates editor instances for the comment sidebar. The primary path uses
+Obsidian's internal editor component (discovered at runtime via
+`editorDiscovery.ts`) with a mock owner (`commentEditorOwner.ts`), giving full
+markdown syntax highlighting, formatting hotkeys, and workspace-level plugin
+extensions (including @mentions). Falls back to a bare CM6 `EditorView` when
+discovery fails (e.g. no MarkdownView is open).
+
 Returns an `EmbeddedEditorHandle` with `getText`, `setText`, `clear`, `focus`,
-and `destroy` methods. Supports Enter-to-submit (Shift+Enter for newline),
-placeholder text, and extra CM6 extensions (used for @mention support).
+and `destroy` methods. Enter-to-submit uses a DOM keydown listener (Obsidian
+path) or CM6 keymap (fallback path).
 
 Constructor: `createEmbeddedEditor(parent, options)`.
+
+### comments/editorDiscovery.ts -- Runtime discovery of internal editor class
+
+Discovers Obsidian's internal scroll-aware editor component class (`aZ` in
+minified code) by walking the prototype chain of a live `MarkdownView`'s
+`editMode` property. Uses feature detection (checks for `buildLocalExtensions`,
+`getDynamicExtensions`, `set`, `clear`, etc.) rather than position-based chain
+walking. Caches the result as a module-level singleton; call
+`resetEditorDiscovery()` on plugin unload to clear the cache.
+
+Exports: `getEditorComponentClass(app)`, `resetEditorDiscovery()`.
+
+### comments/commentEditorOwner.ts -- Mock owner for standalone editors
+
+Creates a Proxy-based mock object that satisfies the `owner` parameter required
+by Obsidian's internal editor constructor. Provides `app`, `file: null`,
+`getFile()`, `getMode() → "source"`, and stubs for save/fold callbacks. Unknown
+property access returns `undefined` and logs a warning for debugging.
 
 ### comments/commentCommands.ts -- Command registration
 

@@ -16,6 +16,7 @@ import { DeviceStore } from "./deviceStore";
 import type { DeviceRegistry } from "./deviceStore";
 import { log } from "./logger";
 import { editorMentionExtension } from "./mentions/editorMentionPlugin";
+import { resetEditorDiscovery } from "./comments/editorDiscovery";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -167,6 +168,7 @@ export default class YaosExtensionPlugin extends Plugin {
   onunload() {
     this.tracker?.stop();
     this.statusBar?.destroy();
+    resetEditorDiscovery();
     document.body.classList.remove("yaos-extension-names");
     document.querySelectorAll(".yaos-extension-tooltip").forEach((el) => el.remove());
     document.querySelectorAll(".yaos-extension-mention-dropdown").forEach((el) => el.remove());
