@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { CommentStore } from "./commentStore";
-import { MentionSuggest } from "../mentions/mentionSuggest";
+import { createEmbeddedEditor, type EmbeddedEditorHandle } from "./embeddedEditor";
+import { editorMentionExtension } from "../mentions/editorMentionPlugin";
 import type { KnownDevice } from "../yaosApi";
 import type { CommentThread } from "./types";
 
@@ -17,8 +18,8 @@ export class CommentView extends ItemView {
   private onDelete?: (commentId: string) => void;
   private onDeleteReply?: (replyId: string) => void;
   private getPeers?: () => KnownDevice[];
-  private mentionSuggests: MentionSuggest[] = [];
-  private replyMentionSuggests: MentionSuggest[] = [];
+  private editors: EmbeddedEditorHandle[] = [];
+  private replyEditors: EmbeddedEditorHandle[] = [];
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
 
   constructor(
@@ -64,7 +65,7 @@ export class CommentView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    this.destroyMentionSuggests();
+    this.destroyEditors();
     this.contentEl.empty();
   }
 
@@ -83,7 +84,7 @@ export class CommentView extends ItemView {
   }
 
   private async render(): Promise<void> {
-    this.destroyMentionSuggests();
+    this.destroyEditors();
     this.contentEl.empty();
     this.contentEl.addClass("yaos-extension-comment-view");
 
@@ -113,27 +114,34 @@ export class CommentView extends ItemView {
   private renderInput(): void {
     const inputContainer = this.contentEl.createDiv({ cls: "yaos-extension-comment-input" });
 
-    const textarea = inputContainer.createEl("textarea", {
-      cls: "yaos-extension-comment-textarea",
-      attr: { placeholder: "Add a comment..." },
+    const extensions = this.getPeers
+      ? [editorMentionExtension(this.getPeers)]
+      : [];
+
+    const handle = createEmbeddedEditor(inputContainer, {
+      placeholder: "Add a comment...",
+      onSubmit: (text) => {
+        if (!text) return;
+        this.onAddComment?.(text);
+        handle.clear();
+      },
+      extraExtensions: extensions,
     });
 
     if (this.pendingSelection) {
-      textarea.value = `> ${this.pendingSelection.rangeText}\n`;
-      textarea.focus();
+      handle.setText(`> ${this.pendingSelection.rangeText}\n`);
+      handle.focus();
       this.pendingSelection = null;
     }
 
-    if (this.getPeers) {
-      this.mentionSuggests.push(new MentionSuggest(textarea, this.getPeers));
-    }
+    this.editors.push(handle);
 
     const submitBtn = inputContainer.createEl("button", { cls: "yaos-extension-comment-submit", text: "Comment" });
     submitBtn.addEventListener("click", () => {
-      const text = textarea.value.trim();
+      const text = handle.getText().trim();
       if (!text) return;
       this.onAddComment?.(text);
-      textarea.value = "";
+      handle.clear();
     });
   }
 
@@ -157,7 +165,7 @@ export class CommentView extends ItemView {
     this.renderMentionsInto(body, thread.comment.text);
 
     if (thread.replies.length > 0) {
-      const replyCount = header.createSpan({ cls: "yaos-extension-reply-count", text: `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}` });
+      header.createSpan({ cls: "yaos-extension-reply-count", text: `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}` });
     }
 
     const actions = header.createDiv({ cls: "yaos-extension-comment-actions" });
@@ -193,7 +201,7 @@ export class CommentView extends ItemView {
           repliesContainer.classList.add("expanded");
         });
       } else {
-        this.destroyReplyMentionSuggests();
+        this.destroyReplyEditors();
         repliesContainer.classList.remove("expanded");
       }
     });
@@ -224,21 +232,30 @@ export class CommentView extends ItemView {
     }
 
     const replyInput = container.createDiv({ cls: "yaos-extension-reply-input" });
-    const replyTextarea = replyInput.createEl("textarea", {
-      cls: "yaos-extension-reply-textarea",
-      attr: { placeholder: "Write a reply..." },
-    });
-    const replyBtn = replyInput.createEl("button", { cls: "yaos-extension-reply-submit", text: "Reply" });
-    replyBtn.addEventListener("click", () => {
-      const text = replyTextarea.value.trim();
-      if (!text) return;
-      this.onAddReply?.(thread.comment.id, text);
-      replyTextarea.value = "";
+
+    const extensions = this.getPeers
+      ? [editorMentionExtension(this.getPeers)]
+      : [];
+
+    const replyHandle = createEmbeddedEditor(replyInput, {
+      placeholder: "Write a reply...",
+      onSubmit: (text) => {
+        if (!text) return;
+        this.onAddReply?.(thread.comment.id, text);
+        replyHandle.clear();
+      },
+      extraExtensions: extensions,
     });
 
-    if (this.getPeers) {
-      this.replyMentionSuggests.push(new MentionSuggest(replyTextarea, this.getPeers));
-    }
+    this.replyEditors.push(replyHandle);
+
+    const replyBtn = replyInput.createEl("button", { cls: "yaos-extension-reply-submit", text: "Reply" });
+    replyBtn.addEventListener("click", () => {
+      const text = replyHandle.getText().trim();
+      if (!text) return;
+      this.onAddReply?.(thread.comment.id, text);
+      replyHandle.clear();
+    });
   }
 
   private renderMentionsInto(container: HTMLElement, text: string): void {
@@ -252,19 +269,19 @@ export class CommentView extends ItemView {
     }
   }
 
-  private destroyMentionSuggests(): void {
-    for (const ms of this.mentionSuggests) {
-      ms.destroy();
+  private destroyEditors(): void {
+    for (const editor of this.editors) {
+      editor.destroy();
     }
-    this.mentionSuggests = [];
-    this.destroyReplyMentionSuggests();
+    this.editors = [];
+    this.destroyReplyEditors();
   }
 
-  private destroyReplyMentionSuggests(): void {
-    for (const ms of this.replyMentionSuggests) {
-      ms.destroy();
+  private destroyReplyEditors(): void {
+    for (const editor of this.replyEditors) {
+      editor.destroy();
     }
-    this.replyMentionSuggests = [];
+    this.replyEditors = [];
   }
 
   private formatRelativeTime(timestamp: number): string {

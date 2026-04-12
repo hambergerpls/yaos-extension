@@ -19,10 +19,10 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |     +-- commentView.ts     (Obsidian ItemView: sidebar panel)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
+  |     +-- embeddedEditor.ts  (CM6 editor factory for sidebar inputs)
   |
   +-- mentions/
-  |     +-- mentionSuggest.ts  (@mention autocomplete in textareas)
-  |     +-- editorMentionPlugin.ts (CM6 ViewPlugin + keymap for @mention in editor)
+  |     +-- editorMentionPlugin.ts (CM6 ViewPlugin + keymap for @mention in editor + sidebar)
   |
   +-- notifications/
         +-- notificationStore.ts  (Read/write notifications.jsonl + local read state)
@@ -43,10 +43,10 @@ Direct import relationships:
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
 | `comments/commentStore` | comments/types, obsidian (`Vault`) |
-| `comments/commentView` | comments/commentStore, mentions/mentionSuggest, yaosApi (types), obsidian view APIs |
+| `comments/commentView` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian view APIs |
 | `comments/commentCommands` | obsidian APIs |
 | `comments/commentDecorations` | comments/types |
-| `mentions/mentionSuggest` | yaosApi (types only) |
+| `comments/embeddedEditor` | @codemirror/view, @codemirror/state |
 | `mentions/editorMentionPlugin` | yaosApi (types only), @codemirror/view, @codemirror/state |
 | `notifications/notificationStore` | comments/types, obsidian (`Vault`) |
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
@@ -113,9 +113,9 @@ Editor (user selects text + Mod+Shift+M or context menu)
 commentCommands :: getSelectionInfo(editor)
   |
   v
-CommentView (sidebar shows textarea with selection quoted)
+CommentView (sidebar shows CM6 editor with selection quoted)
   |
-  | user types comment, clicks "Comment"
+  | user types comment, clicks "Comment" or presses Enter
   v
 main.ts :: handleAddComment(text)
   |
@@ -128,7 +128,7 @@ CommentView :: refresh(filePath)
   |
   | reads threads from commentStore.getThreadsForFile()
   | renders thread cards with expand/collapse, reply, resolve, delete
-  | MentionSuggest attached to textareas for @autocomplete
+  | editorMentionExtension provides @autocomplete in embedded CM6 editors
 ```
 
 ### Notifications
@@ -263,12 +263,21 @@ Key methods:
 
 Obsidian `ItemView` with view type `"yaos-extension-comments"`. Renders thread
 cards with expand/collapse animation, reply input, resolve/reopen, and delete
-(own comments/replies only). `MentionSuggest` is attached to all textareas when
-a `getPeers` callback is provided. Mention rendering uses DOM-safe
-`renderMentionsInto()` with `createTextNode`.
+(own comments/replies only). Uses embedded CM6 editors (via `embeddedEditor.ts`)
+for comment and reply input, with `editorMentionExtension` for @mention autocomplete.
+Mention rendering uses DOM-safe `renderMentionsInto()` with `createTextNode`.
 
 Constructor receives callbacks: `onAddComment`, `onAddReply`, `onResolve`,
 `onDelete`, `onDeleteReply`, `getPeers`.
+
+### comments/embeddedEditor.ts -- CM6 editor factory
+
+Creates compact CM6 `EditorView` instances for use in the comment sidebar.
+Returns an `EmbeddedEditorHandle` with `getText`, `setText`, `clear`, `focus`,
+and `destroy` methods. Supports Enter-to-submit (Shift+Enter for newline),
+placeholder text, and extra CM6 extensions (used for @mention support).
+
+Constructor: `createEmbeddedEditor(parent, options)`.
 
 ### comments/commentCommands.ts -- Command registration
 
@@ -281,15 +290,6 @@ item. Both open the comment sidebar and pre-fill the selection.
 Exports `findRangeInDocument(doc, rangeText, rangeContext, rangeOffset)` -- pure
 function that locates commented text ranges using text matching and context
 disambiguation. Returns `{from, to} | null`.
-
-### mentions/mentionSuggest.ts -- @mention autocomplete
-
-`MentionSuggest` class that attaches to a textarea element. On `@` keystroke,
-shows a dropdown of connected peers filtered by typed prefix. Keyboard navigation
-(arrow keys + Enter/Escape). Inserts `@DeviceName ` on selection. Uses DOM-safe
-text nodes for dropdown items.
-
-Constructor: `new MentionSuggest(textarea, getPeers)`. Cleanup: `destroy()`.
 
 ### notifications/notificationStore.ts -- Notification persistence
 

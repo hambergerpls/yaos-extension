@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CommentView } from "./commentView";
 import { CommentStore } from "./commentStore";
+import type { EmbeddedEditorHandle } from "./embeddedEditor";
 import type { CommentThread, Comment, Reply } from "./types";
 import type { KnownDevice } from "../yaosApi";
 
@@ -40,6 +41,16 @@ function makeReply(overrides: Partial<Reply> = {}): Reply {
     mentions: [],
     ...overrides,
   };
+}
+
+function getCommentEditorHandles(view: CommentView): EmbeddedEditorHandle[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (view as any).editors as EmbeddedEditorHandle[];
+}
+
+function getReplyEditorHandles(view: CommentView): EmbeddedEditorHandle[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (view as any).replyEditors as EmbeddedEditorHandle[];
 }
 
 describe("CommentView", () => {
@@ -272,13 +283,66 @@ describe("CommentView", () => {
     });
   });
 
-  describe("mention suggest integration", () => {
+  describe("CM6 editor integration", () => {
+    it("renders a CM6 editor for comment input", async () => {
+      const store = makeStore([]);
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice" },
+      );
+
+      await view.onOpen();
+
+      const cmEditor = view.contentEl.querySelector(".yaos-extension-comment-input .cm-editor");
+      expect(cmEditor).not.toBeNull();
+    });
+
+    it("submits comment via button click", async () => {
+      const store = makeStore([]);
+      const onAddComment = vi.fn();
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice", onAddComment },
+      );
+
+      await view.onOpen();
+
+      const handles = getCommentEditorHandles(view);
+      expect(handles.length).toBe(1);
+      handles[0]!.setText("hello world");
+
+      const submitBtn = view.contentEl.querySelector(".yaos-extension-comment-submit") as HTMLElement;
+      submitBtn.click();
+
+      expect(onAddComment).toHaveBeenCalledWith("hello world");
+    });
+
+    it("cleans up CM6 editors on onClose", async () => {
+      const store = makeStore([]);
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice" },
+      );
+
+      await view.onOpen();
+      expect(view.contentEl.querySelector(".cm-editor")).not.toBeNull();
+
+      await view.onClose();
+
+      expect(document.querySelectorAll(".cm-editor").length).toBe(0);
+    });
+  });
+
+  describe("mention integration", () => {
     const mockPeers: KnownDevice[] = [
       { name: "Alice", color: "#f00", colorLight: "#f0033", online: true, hasCursor: true },
       { name: "Bob", color: "#0f0", colorLight: "#0f033", online: true, hasCursor: false },
     ];
 
-    it("shows mention dropdown when typing @ in comment textarea with getPeers callback", async () => {
+    it("shows mention dropdown when typing @ in comment editor with getPeers callback", async () => {
       const store = makeStore([]);
       const view = new CommentView(
         {} as any,
@@ -288,45 +352,14 @@ describe("CommentView", () => {
 
       await view.onOpen();
 
-      const textarea = view.contentEl.querySelector(".yaos-extension-comment-textarea") as HTMLTextAreaElement;
-      expect(textarea).not.toBeNull();
-      textarea.value = "@";
-      textarea.selectionStart = 1;
-      textarea.selectionEnd = 1;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-
-      const items = document.querySelectorAll(".yaos-extension-mention-item");
-      expect(items.length).toBe(2);
-    });
-
-    it("shows mention dropdown in reply textarea when thread is expanded", async () => {
-      const threads: CommentThread[] = [
-        {
-          comment: makeComment({ id: "c1", author: "Bob" }),
-          replies: [],
-        },
-      ];
-      const store = makeStore(threads);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", getPeers: () => mockPeers },
-      );
-
-      await view.onOpen();
-      await view.refresh("test.md");
-
-      const header = view.contentEl.querySelector(".yaos-extension-comment-header") as HTMLElement;
-      header.click();
+      const handles = getCommentEditorHandles(view);
+      expect(handles.length).toBe(1);
+      handles[0]!.setText(" @");
+      handles[0]!.view.dispatch({
+        selection: { anchor: 2 },
+      });
 
       await new Promise(r => setTimeout(r, 50));
-
-      const replyTextarea = view.contentEl.querySelector(".yaos-extension-reply-textarea") as HTMLTextAreaElement;
-      expect(replyTextarea).not.toBeNull();
-      replyTextarea.value = "@";
-      replyTextarea.selectionStart = 1;
-      replyTextarea.selectionEnd = 1;
-      replyTextarea.dispatchEvent(new Event("input", { bubbles: true }));
 
       const items = document.querySelectorAll(".yaos-extension-mention-item");
       expect(items.length).toBe(2);
@@ -342,17 +375,16 @@ describe("CommentView", () => {
 
       await view.onOpen();
 
-      const textarea = view.contentEl.querySelector(".yaos-extension-comment-textarea") as HTMLTextAreaElement;
-      textarea.value = "@";
-      textarea.selectionStart = 1;
-      textarea.selectionEnd = 1;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      const handles = getCommentEditorHandles(view);
+      handles[0]!.setText(" @");
+
+      await new Promise(r => setTimeout(r, 50));
 
       const items = document.querySelectorAll(".yaos-extension-mention-item");
       expect(items.length).toBe(0);
     });
 
-    it("cleans up mention suggest on onClose", async () => {
+    it("cleans up mention dropdown on onClose", async () => {
       const store = makeStore([]);
       const view = new CommentView(
         {} as any,
@@ -362,11 +394,10 @@ describe("CommentView", () => {
 
       await view.onOpen();
 
-      const textarea = view.contentEl.querySelector(".yaos-extension-comment-textarea") as HTMLTextAreaElement;
-      textarea.value = "@";
-      textarea.selectionStart = 1;
-      textarea.selectionEnd = 1;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      const handles = getCommentEditorHandles(view);
+      handles[0]!.setText(" @");
+
+      await new Promise(r => setTimeout(r, 50));
 
       expect(document.querySelectorAll(".yaos-extension-mention-item").length).toBe(2);
 

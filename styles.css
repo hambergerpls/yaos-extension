@@ -465,6 +465,22 @@
   vertical-align: middle;
 }
 
+.yaos-extension-notification-kind-icon[data-kind="mention"]::before {
+  content: "@";
+}
+
+.yaos-extension-notification-kind-icon[data-kind="document_mention"]::before {
+  content: "@";
+}
+
+.yaos-extension-notification-kind-icon[data-kind="reply"]::before {
+  content: "\21A9";
+}
+
+.yaos-extension-notification-kind-icon[data-kind="new_comment"]::before {
+  content: "\1F4AC";
+}
+
 .yaos-extension-notification-from {
   display: flex;
   align-items: center;
