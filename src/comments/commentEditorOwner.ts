@@ -23,6 +23,8 @@ export function createMockOwner(app: App, file?: TFile | null): MockOwner {
       return "source";
     },
     path: file?.path ?? "",
+    editor: null,
+    editMode: null,
     onInternalDataChange() {},
     onMarkdownFold() {},
     save() {},
@@ -34,7 +36,7 @@ export function createMockOwner(app: App, file?: TFile | null): MockOwner {
         return (obj as any)[prop];
       }
       if (typeof prop === "string") {
-        console.warn(`[yaos-extension] MockOwner: accessing unknown property "${prop}"`);
+        console.debug(`[yaos-extension] MockOwner: accessing unknown property "${prop}"`);
       }
       return undefined;
     },

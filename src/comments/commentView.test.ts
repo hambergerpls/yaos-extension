@@ -336,6 +336,82 @@ describe("CommentView", () => {
     });
   });
 
+  describe("draft preservation", () => {
+    it("clears comment input draft when switching to a different file", async () => {
+      const store = makeStore([]);
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice" },
+      );
+
+      await view.onOpen();
+      await view.refresh("file-a.md");
+
+      const handles = getCommentEditorHandles(view);
+      handles[0]!.setText("draft for file A");
+
+      // Refresh with a different file (simulates switching active file)
+      await view.refresh("file-b.md");
+
+      const newHandles = getCommentEditorHandles(view);
+      expect(newHandles.length).toBe(1);
+      expect(newHandles[0]!.getText()).toBe("");
+    });
+
+    it("pendingSelection overrides saved draft", async () => {
+      const store = makeStore([]);
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice" },
+      );
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const handles = getCommentEditorHandles(view);
+      handles[0]!.setText("my draft");
+
+      // Set pending selection before refresh
+      view.setPendingSelection({
+        rangeText: "selected text",
+        rangeOffset: 0,
+        rangeContext: "some context",
+        rangeLength: 13,
+      });
+
+      // Refresh same file — pendingSelection should win over draft
+      await view.refresh("test.md");
+
+      const newHandles = getCommentEditorHandles(view);
+      expect(newHandles[0]!.getText()).not.toContain("my draft");
+    });
+
+    it("preserves comment input draft when refreshing with the same file", async () => {
+      const store = makeStore([]);
+      const view = new CommentView(
+        {} as any,
+        store,
+        { localDeviceName: "Alice" },
+      );
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const handles = getCommentEditorHandles(view);
+      expect(handles.length).toBe(1);
+      handles[0]!.setText("my draft comment");
+
+      // Refresh with the same file (simulates active-leaf-change to same file)
+      await view.refresh("test.md");
+
+      const newHandles = getCommentEditorHandles(view);
+      expect(newHandles.length).toBe(1);
+      expect(newHandles[0]!.getText()).toBe("my draft comment");
+    });
+  });
+
   describe("mention integration", () => {
     const mockPeers: KnownDevice[] = [
       { name: "Alice", color: "#f00", colorLight: "#f0033", online: true, hasCursor: true },

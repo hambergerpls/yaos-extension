@@ -23,6 +23,8 @@ export class CommentView extends ItemView {
   private renderComponents: Component[] = [];
   private renderGeneration = 0;
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
+  private currentFilePath = "";
+  private draftText = "";
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -77,6 +79,10 @@ export class CommentView extends ItemView {
   }
 
   async refresh(filePath: string): Promise<void> {
+    const draft = this.editors[0]?.getText() ?? "";
+    const sameFile = filePath === this.currentFilePath;
+    this.currentFilePath = filePath;
+    this.draftText = sameFile ? draft : "";
     this.threads = await this.store.getThreadsForFile(filePath);
     await this.render();
   }
@@ -136,6 +142,9 @@ export class CommentView extends ItemView {
       handle.setText(`> ${this.pendingSelection.rangeText}\n`);
       handle.focus();
       this.pendingSelection = null;
+    } else if (this.draftText) {
+      handle.setText(this.draftText);
+      this.draftText = "";
     }
 
     this.editors.push(handle);
