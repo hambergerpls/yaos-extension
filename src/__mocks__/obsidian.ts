@@ -3,8 +3,13 @@ export class Component {
   unload(): void {}
 }
 
+export function setIcon(el: HTMLElement, iconName: string): void {
+  el.dataset.icon = iconName;
+}
+
 export class MarkdownRenderer {
-  static render(_app: any, _markdown: string, _el: HTMLElement, _sourcePath: string, _component: Component): Promise<void> {
+  static render(_app: any, markdown: string, el: HTMLElement, _sourcePath: string, _component: Component): Promise<void> {
+    el.textContent = markdown;
     return Promise.resolve();
   }
 }

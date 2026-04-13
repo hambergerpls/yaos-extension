@@ -16,7 +16,7 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   +-- comments/
   |     +-- types.ts           (Comment, Reply, ResolveEntry, Deletion, Notification)
   |     +-- commentStore.ts    (CRUD operations on JSONL files)
-  |     +-- inlineCommentPanel.ts (DOM injection: inline panel in editor, uses MarkdownRenderer)
+  |     +-- inlineCommentPanel.ts (DOM injection: Notion-style inline panel with avatars, thread lines, hover toolbar)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
   |     +-- embeddedEditor.ts  (Editor factory: full Obsidian editor with bare CM6 fallback)
@@ -268,24 +268,39 @@ Key methods:
 - `resolveComment` -- append resolve entry
 - `extractMentions(text)` -- static, parses `@Name` patterns
 
-### comments/inlineCommentPanel.ts -- Inline panel in editor
+### comments/inlineCommentPanel.ts -- Inline panel in editor (Notion-style)
 
 DOM-injected panel that appears inline in the editor's `.cm-scroller` (source mode
-only), inserted before `.cm-sizer`. Renders a collapsible header ("Comments (N)")
-that expands to show comment input, thread cards with expand/collapse animation,
-reply input, resolve/reopen, and delete (own comments/replies only). Uses embedded
-CM6 editors (via `embeddedEditor.ts`) for comment and reply input, with
+only), inserted before `.cm-contentContainer` inside `.cm-sizer`. Follows Notion's
+comment UI layout with:
+
+- **Always-visible "Comments (N)" header** — clicks toggle content expansion
+- **24px circular avatars** with author color background and first initial
+- **Vertical thread line** (1.5px) connecting original comment to replies
+- **Hover-only action toolbar** — resolve (checkmark), edit (pencil), delete (trash)
+  as SVG icon buttons, visible only on comment hover
+- **"Show N replies" button** — collapses/expands reply thread per-thread
+- **Comment items** — avatar + author name + timestamp row, body padded left past avatar
+- **Quote block** — selected text shown above comment body
+- **Resolved threads** — shown with reduced opacity, separated by divider
+
+Uses embedded CM6 editors (via `embeddedEditor.ts`) for comment and reply input, with
 `editorMentionExtension` for @mention autocomplete. Mention rendering uses DOM-safe
-`renderMentionsIntoFallback()` with `createTextNode`.
+`renderMentionsIntoFallback()` with `createTextNode`. Edit mode replaces body with
+inline CM6 editor.
 
 Public API:
-- `attach(scroller)` -- injects panel DOM before `.cm-sizer`
+- `attach(scroller)` -- injects panel DOM before `.cm-contentContainer`
 - `detach()` -- removes panel DOM and cleans up editors
 - `refresh(filePath)` -- loads threads and re-renders
 - `setPendingSelection(selection)` -- queues selection text for next render
 
 Constructor receives callbacks: `onAddComment`, `onAddReply`, `onResolve`,
 `onDelete`, `onDeleteReply`, `onEditComment`, `onEditReply`, `getPeers`.
+
+Internal state tracks `expandedReplies` (Set of comment IDs with expanded replies),
+`editingCommentId`/`editingReplyId` for inline edit mode, `expanded` for panel
+content toggle, and `draftText` for preserving input across refreshes.
 
 ### comments/embeddedEditor.ts -- Editor factory (Obsidian + fallback)
 
@@ -385,9 +400,10 @@ Four independent concerns:
    connection dots, peer dots, floating tooltip, and notification badge. Uses
    Obsidian CSS variables for theme compatibility.
 
-3. **Comment inline panel**: Styles for the collapsible header, content area,
-   thread cards, author dots, quote blocks, reply input, expand/collapse
-   animations, delete buttons, and @mention highlighting.
+ 3. **Comment inline panel (Notion-style)**: Styles for 24px circular avatars with
+    initials, vertical thread lines, hover-only action toolbars (SVG icon buttons),
+    "Show N replies" collapse buttons, thread wrapper hover backgrounds, quote blocks,
+    reply input, expand/collapse animations, edit mode, and @mention highlighting.
 
 4. **Notification panel + mention dropdown**: Styles for notification cards,
    unread indicators, kind icons, the mention autocomplete dropdown with

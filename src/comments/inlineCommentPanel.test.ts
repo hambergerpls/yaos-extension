@@ -90,6 +90,13 @@ function createContainerWithMetadata(): HTMLElement {
   return container;
 }
 
+async function expandPanel(panel: InlineCommentPanel, container: HTMLElement) {
+  panel.attach(container.querySelector(".cm-scroller")! as HTMLElement);
+  await panel.refresh("test.md");
+  const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
+  header.click();
+}
+
 describe("InlineCommentPanel", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -155,7 +162,7 @@ describe("InlineCommentPanel", () => {
   });
 
   describe("collapsible header", () => {
-    it("renders a collapsed header showing 'Comments (0)' when no threads", async () => {
+    it("renders a collapsed header showing Comments count when no threads", async () => {
       const panel = createPanel([]);
       const container = createContainer();
       const scroller = container.querySelector(".cm-scroller")!;
@@ -239,6 +246,580 @@ describe("InlineCommentPanel", () => {
     });
   });
 
+  describe("avatar rendering", () => {
+    it("renders a 24px avatar circle with author initial for each comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Alice", authorColor: "#f00" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const avatar = container.querySelector(".yaos-extension-avatar");
+      expect(avatar).not.toBeNull();
+      expect(avatar?.textContent).toBe("A");
+      expect((avatar as HTMLElement).style.backgroundColor).toBe("rgb(255, 0, 0)");
+    });
+
+    it("renders avatar with different author initial", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Bob", authorColor: "#0f0" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const avatar = container.querySelector(".yaos-extension-avatar");
+      expect(avatar?.textContent).toBe("B");
+    });
+  });
+
+  describe("comment item row", () => {
+    it("renders author name and timestamp in a row with the avatar", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Alice" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const row = container.querySelector(".yaos-extension-comment-item-row");
+      expect(row).not.toBeNull();
+      expect(row?.querySelector(".yaos-extension-avatar")).not.toBeNull();
+      expect(row?.querySelector(".yaos-extension-author-name")?.textContent).toBe("Alice");
+      expect(row?.querySelector(".yaos-extension-timestamp")).not.toBeNull();
+    });
+
+    it("renders edited indicator when comment is edited", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ editedAt: 5000 }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const edited = container.querySelector(".yaos-extension-edited-indicator");
+      expect(edited).not.toBeNull();
+      expect(edited?.textContent).toContain("edited");
+    });
+
+    it("does not render edited indicator when comment is not edited", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment(), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const edited = container.querySelector(".yaos-extension-edited-indicator");
+      expect(edited).toBeNull();
+    });
+  });
+
+  describe("thread line", () => {
+    it("renders a vertical thread line on the original comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment(), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const threadLine = container.querySelector(".yaos-extension-thread-line");
+      expect(threadLine).not.toBeNull();
+    });
+  });
+
+  describe("comment body and quote", () => {
+    it("renders the selected text as a quote above the comment body", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ rangeText: "highlighted code" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const itemBody = container.querySelector(".yaos-extension-comment-item-body");
+      expect(itemBody).not.toBeNull();
+      const quote = itemBody?.querySelector(".yaos-extension-comment-quote");
+      expect(quote).not.toBeNull();
+      expect(quote?.textContent).toContain("highlighted code");
+    });
+
+    it("renders comment body text", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ text: "Hello world" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const body = container.querySelector(".yaos-extension-comment-item-body .yaos-extension-comment-body");
+      expect(body).not.toBeNull();
+      expect(body?.textContent).toContain("Hello world");
+    });
+  });
+
+  describe("hover action toolbar", () => {
+    it("renders a resolve action button on each thread", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+      ];
+      const onResolve = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onResolve });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const actions = container.querySelector(".yaos-extension-comment-actions");
+      expect(actions).not.toBeNull();
+      const resolveBtn = actions?.querySelector(".yaos-extension-resolve-btn");
+      expect(resolveBtn).not.toBeNull();
+      expect(resolveBtn?.getAttribute("aria-label")).toBe("Resolve");
+    });
+
+    it("calls onResolve when resolve button is clicked", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+      ];
+      const onResolve = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onResolve });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const resolveBtn = container.querySelector(".yaos-extension-resolve-btn") as HTMLElement;
+      resolveBtn.click();
+
+      expect(onResolve).toHaveBeenCalledWith("c1", true);
+    });
+
+    it("renders a delete button for the user's own comment in the action toolbar", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Alice" }), replies: [] },
+      ];
+      const onDelete = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onDelete });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const deleteBtn = container.querySelector(".yaos-extension-comment-actions .yaos-extension-delete-btn");
+      expect(deleteBtn).not.toBeNull();
+    });
+
+    it("does not render a delete button for another user's comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Bob" }), replies: [] },
+      ];
+      const panel = createPanel(threads, { localDeviceName: "Alice" });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const deleteBtn = container.querySelector(".yaos-extension-comment-actions .yaos-extension-delete-btn");
+      expect(deleteBtn).toBeNull();
+    });
+
+    it("renders an edit button for the user's own comment in the action toolbar", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Alice" }), replies: [] },
+      ];
+      const panel = createPanel(threads, { localDeviceName: "Alice" });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const editBtn = container.querySelector(".yaos-extension-comment-actions .yaos-extension-edit-btn");
+      expect(editBtn).not.toBeNull();
+    });
+
+    it("does not render an edit button for another user's comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ author: "Bob" }), replies: [] },
+      ];
+      const panel = createPanel(threads, { localDeviceName: "Alice" });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const editBtn = container.querySelector(".yaos-extension-comment-actions .yaos-extension-edit-btn");
+      expect(editBtn).toBeNull();
+    });
+
+    it("calls onDelete when delete button is clicked", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c-42", author: "Alice" }), replies: [] },
+      ];
+      const onDelete = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onDelete });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const deleteBtn = container.querySelector(".yaos-extension-delete-btn") as HTMLElement;
+      deleteBtn.click();
+
+      expect(onDelete).toHaveBeenCalledWith("c-42");
+    });
+  });
+
+  describe("show replies button", () => {
+    it("renders 'Hide replies' button when thread has more than 3 replies (auto-expanded)", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies");
+      expect(showBtn).not.toBeNull();
+      expect(showBtn?.textContent).toContain("Hide replies");
+    });
+
+    it("collapses replies when 'Hide replies' is clicked and shows 'Show N replies'", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      expect(showBtn?.textContent).toContain("Hide replies");
+
+      showBtn.click();
+
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      expect(repliesContainer?.classList.contains("expanded")).toBe(false);
+      const updatedBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      expect(updatedBtn?.textContent).toContain("Show 4 replies");
+    });
+
+    it("does not render show replies button when thread has 3 or fewer replies", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies");
+      expect(showBtn).toBeNull();
+    });
+
+    it("does not render show replies button when thread has no replies", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies");
+      expect(showBtn).toBeNull();
+    });
+
+    it("expands replies when 'Show N replies' is clicked after collapsing", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", author: "Bob" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
+      const collapsedBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      expect(collapsedBtn?.textContent).toContain("Show 4 replies");
+
+      collapsedBtn.click();
+
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      expect(repliesContainer?.classList.contains("expanded")).toBe(true);
+      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
+      expect(replyItems?.length).toBe(4);
+    });
+
+    it("shows reply author avatars when auto-expanded", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Alice", authorColor: "#f00" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", author: "Bob", authorColor: "#0f0" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const avatars = container.querySelectorAll(".yaos-extension-comment-replies .yaos-extension-avatar");
+      expect(avatars.length).toBe(4);
+      expect(avatars[0]!.textContent).toBe("B");
+    });
+
+    it("renders delete button for own reply when replies are auto-expanded", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", author: "Alice" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const onDeleteReply = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onDeleteReply });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const deleteBtn = container.querySelector(".yaos-extension-comment-replies .yaos-extension-delete-btn");
+      expect(deleteBtn).not.toBeNull();
+    });
+
+    it("calls onDeleteReply when reply delete button is clicked", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [
+            makeReply({ id: "r-99", commentId: "c1", author: "Alice" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const onDeleteReply = vi.fn();
+      const panel = createPanel(threads, { localDeviceName: "Alice", onDeleteReply });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const deleteBtn = container.querySelector(".yaos-extension-comment-replies .yaos-extension-delete-btn") as HTMLElement;
+      deleteBtn.click();
+
+      expect(onDeleteReply).toHaveBeenCalledWith("r-99");
+    });
+  });
+
+  describe("reply input", () => {
+    it("renders a reply input for thread with no replies", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const replyInput = container.querySelector(".yaos-extension-thread-wrapper > .yaos-extension-reply-input");
+      expect(replyInput).not.toBeNull();
+    });
+
+    it("renders a reply input for thread with replies when collapsed", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [makeReply({ id: "r1", commentId: "c1" })],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const replyInput = container.querySelector(".yaos-extension-thread-wrapper > .yaos-extension-reply-input");
+      expect(replyInput).not.toBeNull();
+    });
+
+    it("renders a reply input for thread with replies when expanded", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
+
+      const replyInput = container.querySelector(".yaos-extension-thread-wrapper > .yaos-extension-reply-input");
+      expect(replyInput).not.toBeNull();
+    });
+
+    it("calls onAddReply when reply is submitted from the always-visible reply input", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+      ];
+      const onAddReply = vi.fn();
+      const panel = createPanel(threads, { onAddReply });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const replyEditors = (panel as any).replyEditors as any[];
+      expect(replyEditors.length).toBeGreaterThan(0);
+      replyEditors[0].setText("My reply");
+
+      const replyBtn = container.querySelector(".yaos-extension-thread-wrapper > .yaos-extension-reply-input .yaos-extension-reply-submit") as HTMLElement;
+      replyBtn.click();
+
+      expect(onAddReply).toHaveBeenCalledWith("c1", "My reply");
+    });
+
+    it("places reply input outside the collapsible replies container", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+            makeReply({ id: "r3", commentId: "c1" }),
+            makeReply({ id: "r4", commentId: "c1" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
+
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      const replyInputInsideReplies = repliesContainer?.querySelector(".yaos-extension-reply-input");
+      expect(replyInputInsideReplies).toBeNull();
+
+      const replyInputOutsideReplies = container.querySelector(".yaos-extension-thread-wrapper > .yaos-extension-reply-input");
+      expect(replyInputOutsideReplies).not.toBeNull();
+    });
+    it("always shows replies directly when thread has 3 or fewer replies", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", author: "Bob" }),
+            makeReply({ id: "r2", commentId: "c1", author: "Carol" }),
+          ],
+        },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      expect(repliesContainer?.classList.contains("expanded")).toBe(true);
+      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
+      expect(replyItems?.length).toBe(2);
+    });
+  });
+
+  describe("resolved threads", () => {
+    it("renders resolved threads with resolved class", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const thread = container.querySelector(".yaos-extension-comment-thread");
+      expect(thread?.classList.contains("resolved")).toBe(true);
+    });
+
+    it("shows reopen button on resolved threads", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const onResolve = vi.fn();
+      const panel = createPanel(threads, { onResolve });
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const resolveBtn = container.querySelector(".yaos-extension-resolve-btn");
+      expect(resolveBtn?.getAttribute("aria-label")).toContain("Reopen");
+    });
+
+    it("separates resolved threads with a divider", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: false }), replies: [] },
+        { comment: makeComment({ id: "c2", resolved: true }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+
+      await expandPanel(panel, container);
+
+      const divider = container.querySelector(".yaos-extension-comment-resolved-divider");
+      expect(divider).not.toBeNull();
+    });
+  });
+
   describe("destroy cleanup", () => {
     it("destroys editors on detach", async () => {
       const panel = createPanel([]);
@@ -254,238 +835,12 @@ describe("InlineCommentPanel", () => {
     });
   });
 
-  describe("delete comment button", () => {
-    it("renders a delete button for the user's own comment", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ author: "Alice" }), replies: [] },
-      ];
-      const onDelete = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onDelete });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const deleteBtn = container.querySelector(".yaos-extension-delete-btn");
-      expect(deleteBtn).not.toBeNull();
-      expect(deleteBtn?.textContent).toBe("Delete");
-    });
-
-    it("does not render a delete button for another user's comment", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ author: "Bob" }), replies: [] },
-      ];
-      const onDelete = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onDelete });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const deleteBtn = container.querySelector(".yaos-extension-delete-btn");
-      expect(deleteBtn).toBeNull();
-    });
-
-    it("calls onDelete with the comment id when delete is clicked", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c-42", author: "Alice" }), replies: [] },
-      ];
-      const onDelete = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onDelete });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const deleteBtn = container.querySelector(".yaos-extension-delete-btn") as HTMLElement;
-      expect(deleteBtn).not.toBeNull();
-      deleteBtn.click();
-
-      expect(onDelete).toHaveBeenCalledWith("c-42");
-    });
-  });
-
-  describe("delete reply button", () => {
-    it("renders a delete button for the user's own reply when thread is expanded", async () => {
-      const threads: CommentThread[] = [
-        {
-          comment: makeComment({ id: "c1", author: "Bob" }),
-          replies: [makeReply({ id: "r-42", commentId: "c1", author: "Alice" })],
-        },
-      ];
-      const onDeleteReply = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onDeleteReply });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const threadHeader = container.querySelector(".yaos-extension-comment-header") as HTMLElement;
-      threadHeader.click();
-
-      const deleteBtn = container.querySelector(".yaos-extension-delete-reply-btn") as HTMLElement;
-      expect(deleteBtn).not.toBeNull();
-    });
-
-    it("calls onDeleteReply with the reply id when delete is clicked", async () => {
-      const threads: CommentThread[] = [
-        {
-          comment: makeComment({ id: "c1", author: "Bob" }),
-          replies: [makeReply({ id: "r-99", commentId: "c1", author: "Alice" })],
-        },
-      ];
-      const onDeleteReply = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onDeleteReply });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const threadHeader = container.querySelector(".yaos-extension-comment-header") as HTMLElement;
-      threadHeader.click();
-
-      const deleteBtn = container.querySelector(".yaos-extension-delete-reply-btn") as HTMLElement;
-      deleteBtn.click();
-
-      expect(onDeleteReply).toHaveBeenCalledWith("r-99");
-    });
-  });
-
-  describe("resolve button", () => {
-    it("renders a resolve button on each thread", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
-      ];
-      const onResolve = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onResolve });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const resolveBtn = container.querySelector(".yaos-extension-resolve-btn") as HTMLElement;
-      expect(resolveBtn).not.toBeNull();
-      expect(resolveBtn.textContent).toBe("Resolve");
-    });
-
-    it("calls onResolve when resolve is clicked", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
-      ];
-      const onResolve = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onResolve });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const resolveBtn = container.querySelector(".yaos-extension-resolve-btn") as HTMLElement;
-      resolveBtn.click();
-
-      expect(onResolve).toHaveBeenCalledWith("c1", true);
-    });
-
-    it("renders resolved threads with resolved class", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice", resolved: true }), replies: [] },
-      ];
-      const panel = createPanel(threads, { localDeviceName: "Alice" });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const thread = container.querySelector(".yaos-extension-comment-thread");
-      expect(thread?.classList.contains("resolved")).toBe(true);
-
-      const resolveBtn = container.querySelector(".yaos-extension-resolve-btn");
-      expect(resolveBtn?.textContent).toBe("Reopen");
-    });
-  });
-
-  describe("edit comment button", () => {
-    it("renders an edit button for the user's own comment", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
-      ];
-      const onEditComment = vi.fn();
-      const panel = createPanel(threads, { localDeviceName: "Alice", onEditComment });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const editBtn = container.querySelector(".yaos-extension-edit-btn");
-      expect(editBtn).not.toBeNull();
-      expect(editBtn?.textContent).toBe("Edit");
-    });
-
-    it("does not render an edit button for another user's comment", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Bob" }), replies: [] },
-      ];
-      const panel = createPanel(threads, { localDeviceName: "Alice" });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const panelHeader = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      panelHeader.click();
-
-      const editBtn = container.querySelector(".yaos-extension-edit-btn");
-      expect(editBtn).toBeNull();
-    });
-  });
-
   describe("CM6 editor integration", () => {
     it("renders a CM6 editor for comment input when expanded", async () => {
       const panel = createPanel([], { localDeviceName: "Alice" });
       const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
 
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
+      await expandPanel(panel, container);
 
       const cmEditor = container.querySelector(".yaos-extension-comment-input .cm-editor");
       expect(cmEditor).not.toBeNull();
@@ -494,13 +849,8 @@ describe("InlineCommentPanel", () => {
     it("cleans up CM6 editors on detach", async () => {
       const panel = createPanel([], { localDeviceName: "Alice" });
       const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
 
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
+      await expandPanel(panel, container);
 
       expect(container.querySelector(".cm-editor")).not.toBeNull();
 
@@ -557,45 +907,6 @@ describe("InlineCommentPanel", () => {
       const newEditors = getPanelEditors(panel);
       expect(newEditors.length).toBe(1);
       expect(newEditors[0].getText()).toBe("my draft comment");
-    });
-  });
-
-  describe("edited indicator", () => {
-    it("shows edited indicator on a comment that has been edited", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice", editedAt: 5000 }), replies: [] },
-      ];
-      const panel = createPanel(threads, { localDeviceName: "Alice" });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const edited = container.querySelector(".yaos-extension-edited-indicator");
-      expect(edited).not.toBeNull();
-      expect(edited?.textContent).toContain("edited");
-    });
-
-    it("does not show edited indicator on a comment that has not been edited", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
-      ];
-      const panel = createPanel(threads, { localDeviceName: "Alice" });
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const edited = container.querySelector(".yaos-extension-edited-indicator");
-      expect(edited).toBeNull();
     });
   });
 

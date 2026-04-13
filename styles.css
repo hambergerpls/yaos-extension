@@ -136,7 +136,7 @@
 }
 
 /* ============================================================
- * YAOS Extension — Inline Comment Panel
+ * YAOS Extension — Inline Comment Panel (Notion-style)
  * ============================================================ */
 
 .yaos-extension-inline-comment-panel {
@@ -148,12 +148,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 0;
+  padding: 3px 0;
   cursor: pointer;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--font-ui-small, 13px);
-  border-bottom: 1px solid var(--background-modifier-border);
   user-select: none;
 }
 
@@ -184,31 +183,17 @@
 }
 
 .yaos-extension-comment-input {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.yaos-extension-comment-textarea {
-  width: 100%;
-  min-height: 60px;
-  padding: 8px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  background: var(--background-primary);
-  color: var(--text-normal);
-  font-family: var(--font-text, inherit);
-  font-size: var(--font-ui-small, 13px);
-  resize: vertical;
-  box-sizing: border-box;
-}
-
-/* === Obsidian editor embedded in comment sidebar === */
+/* === Obsidian editor embedded in comment panel === */
 .yaos-extension-obsidian-editor-container .markdown-source-view {
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--background-primary);
-  min-height: 60px;
+  min-height: 40px;
   max-height: 200px;
   overflow-y: auto;
   font-size: var(--font-ui-small, 13px);
@@ -250,7 +235,111 @@
   max-height: 150px;
 }
 
+/* === Thread card === */
+.yaos-extension-comment-thread {
+  margin-bottom: 16px;
+}
+
+.yaos-extension-comment-thread.resolved .yaos-extension-thread-wrapper {
+  opacity: 0.5;
+}
+
+.yaos-extension-thread-wrapper {
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  margin: 0 -16px;
+  padding: 8px 16px;
+}
+
+.yaos-extension-thread-wrapper:hover {
+  background-color: var(--background-modifier-hover, rgba(0, 0, 0, 0.04));
+}
+
+/* === Comment item (original + replies) === */
+.yaos-extension-comment-item {
+  position: relative;
+  padding: 4px 0;
+}
+
+.yaos-extension-comment-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  user-select: none;
+  font-size: 14px;
+}
+
+.yaos-extension-avatar {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  user-select: none;
+}
+
+.yaos-extension-author-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  color: var(--text-normal);
+}
+
+.yaos-extension-timestamp {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-edited-indicator {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller, 11px);
+  font-style: italic;
+}
+
+/* === Thread line === */
+.yaos-extension-thread-line {
+  position: absolute;
+  left: 11.5px;
+  top: 32px;
+  width: 1.5px;
+  height: calc(100% - 32px);
+  background-color: var(--background-modifier-border);
+  border-radius: 2px;
+}
+
+/* === Comment item body (padded past avatar) === */
+.yaos-extension-comment-item-body {
+  padding-inline-start: 32px;
+}
+
+.yaos-extension-comment-quote {
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
 /* === Rendered markdown in comment bodies === */
+.yaos-extension-comment-body {
+  margin: 2px 0;
+  color: var(--text-normal);
+  line-height: 1.5;
+}
+
 .yaos-extension-comment-body .internal-link {
   color: var(--link-color);
   text-decoration: none;
@@ -291,161 +380,96 @@
   font-size: inherit;
 }
 
-.yaos-extension-comment-submit {
-  margin-top: 6px;
-  padding: 4px 12px;
-  background: var(--interactive-accent, #7f6df2);
-  color: var(--text-on-accent, white);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: var(--font-ui-small, 13px);
-}
-
-.yaos-extension-comment-thread {
-  margin-bottom: 8px;
-  padding: 8px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-primary);
-  cursor: pointer;
-}
-
-.yaos-extension-comment-thread:hover {
-  border-color: var(--interactive-accent, #7f6df2);
-}
-
-.yaos-extension-comment-thread.resolved {
-  opacity: 0.5;
-  border-style: dashed;
-}
-
-.yaos-extension-comment-resolved-divider {
-  margin: 12px 0 8px 0;
-  padding: 4px 0;
-  font-size: var(--font-ui-smaller, 11px);
-  font-weight: 600;
-  color: var(--text-muted);
-  border-top: 1px solid var(--background-modifier-border);
-}
-
-.yaos-extension-comment-quote {
-  padding: 4px 8px;
-  margin-bottom: 6px;
-  background: var(--background-secondary);
-  border-left: 3px solid var(--interactive-accent, #7f6df2);
-  border-radius: 0 4px 4px 0;
-  font-size: var(--font-ui-smaller, 12px);
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yaos-extension-comment-header {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.yaos-extension-comment-meta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-ui-smaller, 12px);
-  color: var(--text-muted);
-}
-
-.yaos-extension-author-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.yaos-extension-author-name {
-  font-weight: 600;
-  color: var(--text-normal);
-}
-
-.yaos-extension-timestamp {
-  color: var(--text-faint);
-}
-
-.yaos-extension-reply-count {
-  font-size: var(--font-ui-smaller, 11px);
-  color: var(--text-faint);
-}
-
-.yaos-extension-comment-body {
-  margin: 6px 0;
-  color: var(--text-normal);
-  line-height: 1.5;
-}
-
 .yaos-extension-mention {
   color: var(--interactive-accent, #7f6df2);
   font-weight: 600;
 }
 
+/* === Hover action toolbar === */
 .yaos-extension-comment-actions {
-  margin-left: auto;
+  position: absolute;
+  right: 0;
+  top: -4px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+  display: flex;
+  align-items: center;
+  background: var(--background-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 0;
 }
 
-.yaos-extension-resolve-btn {
-  padding: 2px 8px;
-  font-size: var(--font-ui-smaller, 11px);
+.yaos-extension-comment-item:hover .yaos-extension-comment-actions {
+  opacity: 1;
+}
+
+.yaos-extension-comment-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--size-2-2, 4px);
   background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
+  border: none;
+  border-radius: var(--radius-s, 4px);
   cursor: pointer;
+  color: var(--text-muted);
 }
 
-.yaos-extension-resolve-btn:hover {
-  background: var(--background-secondary);
+.yaos-extension-comment-actions button:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover, rgba(0, 0, 0, 0.06));
+}
+
+.yaos-extension-comment-actions button.yaos-extension-delete-btn:hover {
+  color: var(--text-error);
+}
+
+.yaos-extension-comment-actions button svg {
+  width: var(--icon-s, 16px);
+  height: var(--icon-s, 16px);
+  stroke-width: var(--icon-stroke, 2);
+}
+
+/* === Show replies button === */
+.yaos-extension-show-replies {
+  position: relative;
+  padding: 8px 0 8px 32px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+  border-radius: 6px;
+  margin: 0 0 0 8px;
+  width: calc(100% - 40px);
+}
+
+.yaos-extension-show-replies:hover {
+  background-color: var(--background-modifier-hover, rgba(0, 0, 0, 0.04));
   color: var(--text-normal);
 }
 
-.yaos-extension-delete-btn,
-.yaos-extension-delete-reply-btn {
-  padding: 2px 8px;
-  font-size: var(--font-ui-smaller, 11px);
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  cursor: pointer;
-  margin-left: 4px;
+/* === Replies container === */
+.yaos-extension-comment-replies {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.2s ease-out, opacity 0.15s ease-out;
 }
 
-.yaos-extension-delete-btn:hover,
-.yaos-extension-delete-reply-btn:hover {
-  background: var(--background-modifier-error, #e5534b);
-  color: var(--text-on-accent, white);
-  border-color: var(--background-modifier-error, #e5534b);
+.yaos-extension-comment-replies.expanded {
+  max-height: 2000px;
+  opacity: 1;
 }
 
-.yaos-extension-edit-btn,
-.yaos-extension-edit-reply-btn {
-  padding: 2px 8px;
-  font-size: var(--font-ui-smaller, 11px);
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  cursor: pointer;
-  margin-left: 4px;
+.yaos-extension-reply-input {
+  margin-top: 8px;
+  padding-left: 32px;
 }
 
-.yaos-extension-edit-btn:hover,
-.yaos-extension-edit-reply-btn:hover {
-  background: var(--background-secondary);
-  color: var(--text-normal);
-}
-
+/* === Edit mode === */
 .yaos-extension-comment-edit-mode .cm-editor {
   min-height: 60px;
   border: 1px solid var(--background-modifier-border);
@@ -484,53 +508,16 @@
   color: var(--text-normal);
 }
 
-.yaos-extension-edited-indicator {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller, 11px);
-  margin-left: 4px;
-  font-style: italic;
-}
-
-.yaos-extension-comment-replies {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--background-modifier-border);
-  overflow: hidden;
-  max-height: 0;
-  opacity: 0;
-  transition: max-height 0.2s ease-out, opacity 0.15s ease-out, padding-top 0.2s ease-out;
-  padding-top: 0;
-  margin-top: 0;
-}
-
-.yaos-extension-comment-replies.expanded {
-  max-height: 500px;
-  opacity: 1;
-  padding-top: 8px;
-  margin-top: 8px;
-}
-
-.yaos-extension-reply {
-  margin-bottom: 6px;
-  padding: 4px 0;
-}
-
-.yaos-extension-reply-input {
-  margin-top: 8px;
-}
-
-.yaos-extension-reply-textarea {
-  width: 100%;
-  min-height: 40px;
-  padding: 6px;
-  border: 1px solid var(--background-modifier-border);
+/* === Submit buttons === */
+.yaos-extension-comment-submit {
+  margin-top: 6px;
+  padding: 4px 12px;
+  background: var(--interactive-accent, #7f6df2);
+  color: var(--text-on-accent, white);
+  border: none;
   border-radius: 4px;
-  background: var(--background-primary);
-  color: var(--text-normal);
-  font-family: var(--font-text, inherit);
-  font-size: var(--font-ui-smaller, 12px);
-  resize: vertical;
-  box-sizing: border-box;
+  cursor: pointer;
+  font-size: var(--font-ui-small, 13px);
 }
 
 .yaos-extension-reply-submit {
@@ -542,6 +529,15 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: var(--font-ui-smaller, 12px);
+}
+
+.yaos-extension-comment-resolved-divider {
+  margin: 12px 0 8px 0;
+  padding: 4px 0;
+  font-size: var(--font-ui-smaller, 11px);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 /* ============================================================

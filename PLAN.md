@@ -1,214 +1,130 @@
-# Full Obsidian Editor Integration Plan
+# Plan: Restructure Comment HTML to Follow Notion's Layout
 
-## Goal
+## Summary of design decisions
 
-Replace the bare CM6 editor in the comment sidebar with Obsidian's internal
-full markdown editor (source mode), and replace plain-text comment display
-with rendered markdown via `MarkdownRenderer.render`.
+| Aspect | Decision |
+|--------|----------|
+| Avatars | 24px circles with author color bg + first initial |
+| Thread line | Yes — 1.5px vertical gray line connecting comments |
+| Action buttons | Hover-only toolbar with icon buttons (resolve checkmark, edit pencil, delete trash) |
+| Reply collapse | "Show N replies" button between original comment and replies |
+| Header | Always visible "Comments" header, content collapses |
+| Quote | Show selected text above comment body |
+| Actions layout | All as separate icon buttons in hover toolbar (no dropdown) |
+| Reply input | Keep CM6 embedded editor |
 
-## Architecture
-
-### Prototype chain (from runtime dump)
-
-```
-editMode (j6)  →  aZ  →  oZ  →  Component
-         ↑           ↑         ↑
-     Level 0    Level 1    Level 2
-```
-
-- `oZ(app, containerEl, owner)` — creates CM6 EditorView, bare editor
-- `aZ(app, containerEl, owner)` — adds sizer, scroll, HyperMD markdown language
-- `j6(markdownView)` — adds save/fold/properties (we skip this layer)
-
-### Constructor signatures (confirmed via runtime dump)
-
-```js
-// oZ (Level 2) — base editor component
-function t(t, n, i)  // (app, containerEl, owner)
-// Sets: this.app, this.owner, this.containerEl
-// Creates: this.editorEl, this.cm (EditorView), this.editor (iZ wrapper)
-
-// aZ (Level 1) — scroll-aware editor with markdown
-function t(t, n, i)  // (app, containerEl, owner)
-// Calls super(app, containerEl, owner)
-// Creates: this.sizerEl, restructures DOM (contentDOM into cm-contentContainer)
-
-// j6 (Level 0) — MarkdownView's editMode
-function t(t)  // (markdownView)
-// Calls super(t.app, t.contentEl, t)
-// Sets: this.view, this.type = "source"
-```
-
-### Owner interface (what the editor accesses)
-
-The owner is the MarkdownView. Key properties/methods accessed:
-
-- `app` — App instance (for vault.getConfig, workspace)
-- `file` — TFile (null is acceptable — disables link resolution)
-- `getFile()` — returns TFile | null
-- `getMode()` — returns "source" | "preview"
-- `path` — string (used for link resolution)
-- `onInternalDataChange()` — callback (j6 only, not aZ)
-- `onMarkdownFold()` — callback (j6 only, not aZ)
-- Focus handler: `app.workspace.activeEditor = owner`
-- Save-related: handled at j6 level, not aZ/oZ
-
-### Level 0 methods (j6 — MarkdownView's editMode)
-show, set, clear, destroy, getSelection, beforeUnload, getEphemeralState,
-setState, handleScroll, setHighlight, highlightSearchMatches, getFoldInfo,
-getDynamicExtensions, onUpdate, onResize, updateBottomPadding,
-updateReadableLineLength, onConfigChanged
-
-### Level 1 methods (aZ — scroll-aware editor)
-onScroll, handleScroll, show, hide, focus, getScroll, applyScroll, showSearch,
-buildLocalExtensions, onConfigChanged, getDynamicExtensions, setCssClass,
-onCssChange, onViewClick, onUpdate
-
-### Level 2 methods (oZ — base editor component)
-onload, file, path, get, set, saveHistory, reinit, reparent, clear, destroy,
-updateEvent, buildLocalExtensions, tryPasteUrl, getLocalExtensions,
-getDynamicExtensions, onConfigChanged, updateOptions, resetSyntaxHighlighting,
-getFoldInfo, applyFoldInfo, toggleFoldFrontmatter, getClickableTokenHref,
-triggerClickableToken, updateLinkPopup, toggleSource, onUpdate, onEditorClick,
-onEditorLinkMouseover, onEditorDragStart, onContextMenu, onMenu, onResize,
-activeCM, editTableCell, destroyTableCell
-
-## Implementation Phases
-
-### Phase 1: Editor Discovery Module
-
-File: `src/comments/editorDiscovery.ts`
-
-- Wait for a `MarkdownView` to appear (may not exist at plugin load)
-- Walk `editMode` prototype chain to find `aZ` constructor
-- Feature detection: verify prototype has `buildLocalExtensions`,
-  `getDynamicExtensions`, `show`, `hide`, `focus`
-- Cache as singleton
-- Export `getEditorComponentClass(app): Constructor | null`
-- If no MarkdownView open, register one-shot `workspace.on("layout-change")`
-  listener to retry
-
-### Phase 2: Mock Owner Adapter
-
-File: `src/comments/commentEditorOwner.ts`
-
-Create a Proxy-based mock that satisfies `aZ`/`oZ`'s owner interface:
-
-```typescript
-function createMockOwner(app: App, file?: TFile | null): object
-```
-
-- Returns real `app` reference
-- `file` = null (disables link resolution)
-- `getFile()` → null
-- `getMode()` → "source"
-- `path` → ""
-- Proxy `get` trap: returns safe defaults for unexpected property access
-- Override focus handler: do NOT set `app.workspace.activeEditor`
-- Log unexpected access in dev mode
-
-### Phase 3: Replace Embedded Editor
-
-Modify: `src/comments/embeddedEditor.ts`
-
-New function `createObsidianEditor(app, parent, options)` alongside existing
-`createEmbeddedEditor`:
-
-1. Call `getEditorComponentClass(app)` to get `aZ` constructor
-2. If found:
-   - Create container div inside `parent`
-   - Instantiate `aZ(app, container, mockOwner)`
-   - Call `component.load()` (Component lifecycle)
-   - Call `component.set("", true)` to initialize empty
-   - Source mode (`sourceMode = true`) — skip live preview
-   - Wire Enter-to-submit via `component.cm`
-   - Inject @mention extension
-   - Return `EmbeddedEditorHandle`:
-     - `getText()` → `component.cm.state.doc.toString()`
-     - `setText(t)` → `component.set(t, true)`
-     - `clear()` → `component.clear()`
-     - `focus()` → `component.focus()`
-     - `destroy()` → `component.unload()`
-3. If not found: fall back to current bare CM6 `createEmbeddedEditor()`
-
-Update `commentView.ts`: Change `renderInput()` and `renderReplies()` to call
-`createObsidianEditor` when available.
-
-### Phase 4: Markdown Rendering for Comment Display
-
-Modify: `src/comments/commentView.ts`
-
-Replace `renderMentionsInto(container, text)` with
-`renderCommentBody(container, text)`:
-
-```typescript
-async renderCommentBody(container: HTMLElement, text: string): Promise<void> {
-  const component = new Component();
-  this.addChild(component);
-  await MarkdownRenderer.render(
-    this.app,
-    text,
-    container,
-    "",
-    component
-  );
-}
-```
-
-This gives us:
-- Rendered markdown (bold, italic, links, code blocks, callouts)
-- @mentions preserved as bold text or styled via CSS
-- Proper Component lifecycle management
-
-### Phase 5: CSS Adjustments
-
-Modify: `src/styles.css`
-
-The `aZ` constructor creates:
+## New HTML structure
 
 ```
-containerEl
-  └── editorEl.markdown-source-view.cm-s-obsidian.mod-cm6
-        └── cm.scrollDOM
-              └── sizerEl.cm-sizer
-                    └── contentContainer.cm-contentContainer
-                          ├── gutters
-                          └── contentDOM
+.yaos-extension-inline-comment-panel
+  .yaos-extension-inline-comment-header      ← always visible "Comments" row
+  .yaos-extension-inline-comment-content     ← collapsible
+    .yaos-extension-comment-input            ← top-level comment input (CM6 editor)
+    .yaos-extension-comment-thread           ← each thread
+      .yaos-extension-thread-wrapper         ← border-radius: 8px container
+        .yaos-extension-comment-item         ← original comment
+          .yaos-extension-comment-item-row   ← avatar + name + timestamp
+            .yaos-extension-avatar           ← 24px circle with initial
+            .yaos-extension-author-name
+            .yaos-extension-timestamp
+            .yaos-extension-edited-indicator (if edited)
+          .yaos-extension-thread-line        ← 1.5px vertical line (absolute)
+          .yaos-extension-comment-item-body  ← padded-left past avatar
+            .yaos-extension-comment-quote    ← selected text
+            .yaos-extension-comment-body     ← rendered markdown
+          .yaos-extension-comment-actions    ← hover toolbar (absolute, top-right)
+            resolve-btn (checkmark icon)
+            edit-btn (pencil icon)           ← only if own comment
+            delete-btn (trash icon)          ← only if own comment
+        .yaos-extension-show-replies         ← "Show N replies" button
+        .yaos-extension-comment-replies      ← expanded replies
+          .yaos-extension-comment-item       ← each reply (same structure)
+            .yaos-extension-comment-item-row
+            .yaos-extension-comment-item-body
+            .yaos-extension-comment-actions
+          .yaos-extension-reply-input        ← CM6 editor at bottom
+    .yaos-extension-comment-resolved-divider
+    [resolved threads, same structure]
 ```
 
-CSS rules needed:
-- Constrain height (max-height with overflow, ~120px for input, expandable)
-- Hide irrelevant elements (line numbers, fold gutters)
-- Remove full-page padding/margins
-- Scope under `.yaos-extension-comment-input .markdown-source-view`
-- Style rendered markdown comment bodies under `.yaos-extension-comment-body`
+## Implementation tasks
 
-### Phase 6: Cleanup & Verification
+### 1. Update `inlineCommentPanel.ts` — DOM structure changes
 
-- Remove `dump-editor-internals` debug command from `main.ts`
-- Test: markdown formatting in input, Ctrl+B/I/K hotkeys
-- Test: rendered markdown in existing comments
-- Test: @mention autocomplete still works
-- Test: fallback to bare CM6 when no MarkdownView available
-- Test: plugin reload doesn't leak DOM/listeners
-- Run existing tests to verify no regressions
+**`render()`** — Keep always-visible header, collapsible content. Header click still toggles content. No structural change needed.
 
-## Risks & Mitigations
+**`renderThreadCard()`** — Complete rewrite:
+- Create `.yaos-extension-thread-wrapper` with `border-radius: 8px`
+- Create `.yaos-extension-comment-item` for original comment:
+  - Row with 24px avatar circle (bg = authorColor, text = first initial), author name, timestamp
+  - Thread line (absolute positioned 1.5px line)
+  - Body area padded left past avatar
+  - Quote block above body
+  - Hover toolbar with icon buttons (resolve, edit, delete)
+- No longer wrap everything in a clickable header — replies expand via "Show N replies" button
 
-| Risk | Mitigation |
-|------|-------------|
-| `aZ` constructor accesses unexpected owner properties | Proxy mock returns safe defaults; log warnings in dev |
-| Focus handler sets `activeEditor` to mock | Override DOM focus handler in local extensions |
-| Obsidian update changes prototype chain depth | Feature detection (check for `buildLocalExtensions`), not position-based |
-| Live preview extensions error without real file | Start in source mode (`sourceMode = true`), skip live preview |
-| `getDynamicExtensions` reads vault config | This is fine — reads from real `app.vault` |
-| Performance: full editor heavier than bare CM6 | Lazy creation; limit concurrent editors; reuse when possible |
+**`renderReplies()`** — Render each reply as `.yaos-extension-comment-item` with same structure (avatar, name, timestamp, body, hover actions). Thread line continues through replies.
 
-## Mode Decision
+**Add `renderShowRepliesButton()`** — New method that renders "Show N replies" between original comment and expanded replies. Clicking it toggles reply visibility.
 
-**Source mode only** (no live preview) for initial implementation.
-- Syntax highlighting ✓
-- Formatting hotkeys ✓
-- @mentions ✓
-- Link/tag autocomplete ✓
-- Live preview — deferred to future work
+**Add `createAvatar(author, color)`** — Helper to create a 24px circle div with author's first initial.
+
+**Add `createActionBar(actions)`** — Helper to create the hover toolbar with icon buttons.
+
+**Avatar helper**: Create a 24px div with `border-radius: 50%`, `background-color: authorColor`, centered white text with first character of author name.
+
+**Action icons**: Use simple SVG icons inline (checkmark for resolve, pencil for edit, trash for delete). No external icon dependency.
+
+### 2. Update `styles.css` — New class styles
+
+**Replace** all existing `.yaos-extension-comment-*` styles with new Notion-inspired styles:
+
+- `.yaos-extension-inline-comment-panel` — keep padding
+- `.yaos-extension-inline-comment-header` — keep but remove border-bottom, add subtle bottom separator
+- `.yaos-extension-inline-comment-content` — keep collapse animation
+- `.yaos-extension-comment-thread` — remove border/card style, use spacing only
+- `.yaos-extension-thread-wrapper` — `border-radius: 8px`, hover bg change, transition
+- `.yaos-extension-comment-item` — `position: relative`, padding
+- `.yaos-extension-comment-item-row` — `display: flex`, `align-items: center`, `gap: 6px`
+- `.yaos-extension-avatar` — `24px × 24px`, `border-radius: 50%`, centered initial, `font-size: 12px`, `color: white`
+- `.yaos-extension-thread-line` — `position: absolute`, `width: 1.5px`, `background: var(--background-modifier-border)`, full height
+- `.yaos-extension-comment-item-body` — `padding-left: 32px` (past avatar)
+- `.yaos-extension-comment-actions` — `position: absolute`, `top: -4px`, `right: 0`, `opacity: 0`, `transition: opacity 150ms`, `background: var(--background-primary)`, `box-shadow`, `border-radius: 6px`, flex row
+- `.yaos-extension-comment-item:hover .yaos-extension-comment-actions` — `opacity: 1`
+- `.yaos-extension-show-replies` — styled as clickable text button, left-padded past avatar
+- Update `.yaos-extension-comment-quote` — subtle styling above body
+- Remove old button styles (`.yaos-extension-resolve-btn`, `.yaos-extension-delete-btn`, `.yaos-extension-edit-btn`) — replace with icon button styles
+- New icon button styles: small square buttons with SVG icons, hover bg
+
+### 3. Update tests — `inlineCommentPanel.test.ts`
+
+Tests that need updating (CSS class / DOM structure changes):
+- "delete comment button" — now a hover toolbar icon, test for `.yaos-extension-delete-btn` still but structure changes
+- "delete reply button" — same
+- "resolve button" — same
+- "edit comment button" — same
+- "CM6 editor integration" — structure changes but still tests for `.cm-editor`
+- "edited indicator" — class stays the same, position in DOM changes
+
+The core behavior doesn't change — same callbacks, same conditions. Only the DOM queries and structure change. All existing tests should be updated to match new CSS class names and DOM nesting.
+
+### 4. Update `AGENTS.md` — Architecture docs
+
+Update the module description for `inlineCommentPanel.ts` to reflect Notion-style layout (avatars, thread lines, hover toolbars, "Show N replies").
+
+## File change summary
+
+| File | Changes |
+|------|---------|
+| `src/comments/inlineCommentPanel.ts` | Major rewrite of `renderThreadCard`, `renderReplies`, add `createAvatar`, `createActionBar`, `renderShowRepliesButton`, update `renderInput` to include avatar |
+| `src/styles.css` | Replace all comment panel CSS with new Notion-style classes |
+| `src/comments/inlineCommentPanel.test.ts` | Update DOM queries to match new structure |
+| `src/AGENTS.md` | Update inlineCommentPanel description |
+
+## Execution order
+
+1. Write new CSS styles first (so they exist when tests run)
+2. Rewrite `renderThreadCard` / `renderReplies` / add helpers in `inlineCommentPanel.ts`
+3. Update tests to match new DOM structure
+4. Run `npx vitest run` + `npm run build` to verify
+5. Update `AGENTS.md`

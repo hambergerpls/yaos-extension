@@ -1,9 +1,12 @@
-import { MarkdownRenderer, Component, type App } from "obsidian";
+import { MarkdownRenderer, Component, setIcon, type App } from "obsidian";
 import { CommentStore } from "./commentStore";
 import { createEmbeddedEditor, type EmbeddedEditorHandle } from "./embeddedEditor";
 import { editorMentionExtension } from "../mentions/editorMentionPlugin";
 import type { KnownDevice } from "../yaosApi";
-import type { CommentThread } from "./types";
+import type { CommentThread, Comment, Reply } from "./types";
+
+
+
 
 export class InlineCommentPanel {
   private store: CommentStore;
@@ -32,6 +35,7 @@ export class InlineCommentPanel {
   private panelEl: HTMLElement | null = null;
   private contentEl: HTMLElement | null = null;
   private scrollerEl: HTMLElement | null = null;
+  private collapsedReplies = new Set<string>();
 
   constructor(
     store: CommentStore,
@@ -116,8 +120,8 @@ export class InlineCommentPanel {
     this.contentEl = this.panelEl.createDiv({ cls: "yaos-extension-inline-comment-content" });
     if (this.expanded) {
       this.contentEl.addClass("expanded");
-      this.renderInput();
       this.renderThreads();
+      this.renderInput();
     }
   }
 
@@ -192,25 +196,69 @@ export class InlineCommentPanel {
       cls: `yaos-extension-comment-thread${thread.comment.resolved ? " resolved" : ""}`,
     });
 
-    const header = card.createDiv({ cls: "yaos-extension-comment-header" });
+    const wrapper = card.createDiv({ cls: "yaos-extension-thread-wrapper" });
+    this.renderCommentItem(wrapper, thread.comment, thread.comment.id);
 
-    const quote = header.createDiv({ cls: "yaos-extension-comment-quote" });
-    quote.createSpan({ text: thread.comment.rangeText });
+    if (thread.replies.length > 3) {
+      const isCollapsed = this.collapsedReplies.has(thread.comment.id);
 
-    const meta = header.createDiv({ cls: "yaos-extension-comment-meta" });
-    const colorDot = meta.createSpan({ cls: "yaos-extension-author-dot" });
-    colorDot.style.backgroundColor = thread.comment.authorColor;
-    meta.createSpan({ cls: "yaos-extension-author-name", text: thread.comment.author });
-    meta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(thread.comment.createdAt) });
-    if (thread.comment.editedAt) {
-      meta.createSpan({ cls: "yaos-extension-edited-indicator", text: "(edited)" });
+      const showBtn = wrapper.createDiv({ cls: "yaos-extension-show-replies" });
+
+      const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies" });
+
+      if (isCollapsed) {
+        showBtn.textContent = `Show ${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}`;
+      } else {
+        showBtn.textContent = "Hide replies";
+        repliesContainer.classList.add("expanded");
+        this.renderReplyItems(repliesContainer, thread);
+      }
+
+      showBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (this.collapsedReplies.has(thread.comment.id)) {
+          this.collapsedReplies.delete(thread.comment.id);
+        } else {
+          this.collapsedReplies.add(thread.comment.id);
+        }
+        this.render();
+      });
+    } else if (thread.replies.length > 0) {
+      const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies expanded" });
+      this.renderReplyItems(repliesContainer, thread);
     }
 
-    const isEditingComment = this.editingCommentId === thread.comment.id;
+    this.renderReplyInput(wrapper, thread);
+  }
 
-    const body = card.createDiv({ cls: "yaos-extension-comment-body" });
+  private renderCommentItem(parent: HTMLElement, comment: Comment | Reply, threadId: string): void {
+    const item = parent.createDiv({ cls: "yaos-extension-comment-item" });
 
-    if (isEditingComment) {
+    const row = item.createDiv({ cls: "yaos-extension-comment-item-row" });
+    const avatar = row.createDiv({ cls: "yaos-extension-avatar" });
+    avatar.style.backgroundColor = comment.authorColor;
+    avatar.textContent = comment.author.charAt(0).toUpperCase();
+
+    row.createSpan({ cls: "yaos-extension-author-name", text: comment.author });
+    row.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(comment.createdAt) });
+    if (comment.editedAt) {
+      row.createSpan({ cls: "yaos-extension-edited-indicator", text: "(edited)" });
+    }
+
+    const threadLine = item.createDiv({ cls: "yaos-extension-thread-line" });
+
+    const isEditing = this.editingCommentId === comment.id || this.editingReplyId === comment.id;
+
+    const bodyContainer = item.createDiv({ cls: "yaos-extension-comment-item-body" });
+
+    if ("rangeText" in comment) {
+      const quote = bodyContainer.createDiv({ cls: "yaos-extension-comment-quote" });
+      quote.createSpan({ text: (comment as Comment).rangeText });
+    }
+
+    const body = bodyContainer.createDiv({ cls: "yaos-extension-comment-body" });
+
+    if (isEditing) {
       const editContainer = body.createDiv({ cls: "yaos-extension-comment-edit-mode" });
 
       const extensions = this.getPeers
@@ -221,7 +269,7 @@ export class InlineCommentPanel {
         extraExtensions: extensions,
         app: this.app,
       });
-      editHandle.setText(thread.comment.text);
+      editHandle.setText(comment.text);
       editHandle.focus();
       this.editors.push(editHandle);
 
@@ -233,152 +281,84 @@ export class InlineCommentPanel {
         const newText = editHandle.getText().trim();
         if (!newText) return;
         this.editingCommentId = null;
-        this.onEditComment?.(thread.comment.id, newText);
+        this.editingReplyId = null;
+        if ("commentId" in comment) {
+          this.onEditReply?.(comment.id, newText);
+        } else {
+          this.onEditComment?.(comment.id, newText);
+        }
       });
       cancelBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.editingCommentId = null;
+        this.editingReplyId = null;
         this.render();
       });
     } else {
-      void this.renderCommentBody(body, thread.comment.text);
+      void this.renderCommentBody(body, comment.text);
     }
 
-    if (thread.replies.length > 0) {
-      header.createSpan({ cls: "yaos-extension-reply-count", text: `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}` });
-    }
+    const actions = item.createDiv({ cls: "yaos-extension-comment-actions" });
 
-    const actions = header.createDiv({ cls: "yaos-extension-comment-actions" });
     const resolveBtn = actions.createEl("button", {
-      cls: "yaos-extension-resolve-btn",
-      text: thread.comment.resolved ? "Reopen" : "Resolve",
+      cls: "clickable-icon yaos-extension-resolve-btn",
     });
+    const isResolved = "resolved" in comment && (comment as Comment).resolved;
+    setIcon(resolveBtn, "check");
+    resolveBtn.setAttribute("aria-label", isResolved ? "Reopen" : "Resolve");
+    resolveBtn.title = isResolved ? "Reopen" : "Resolve";
     resolveBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.onResolve?.(thread.comment.id, !thread.comment.resolved);
+      this.onResolve?.(threadId, !isResolved);
     });
 
-    if (thread.comment.author === this.localDeviceName) {
-      if (!isEditingComment) {
+    if (comment.author === this.localDeviceName) {
+      if (!isEditing) {
         const editBtn = actions.createEl("button", {
-          cls: "yaos-extension-edit-btn",
-          text: "Edit",
+          cls: "clickable-icon yaos-extension-edit-btn",
         });
+        setIcon(editBtn, "pencil");
+        editBtn.setAttribute("aria-label", "Edit");
+        editBtn.title = "Edit";
         editBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          this.editingCommentId = thread.comment.id;
-          this.editingReplyId = null;
+          if ("commentId" in comment) {
+            this.editingReplyId = comment.id;
+            this.editingCommentId = null;
+          } else {
+            this.editingCommentId = comment.id;
+            this.editingReplyId = null;
+          }
           this.render();
         });
       }
       const deleteBtn = actions.createEl("button", {
-        cls: "yaos-extension-delete-btn",
-        text: "Delete",
+        cls: "clickable-icon yaos-extension-delete-btn",
       });
+      setIcon(deleteBtn, "trash-2");
+      deleteBtn.setAttribute("aria-label", "Delete");
+      deleteBtn.title = "Delete";
       deleteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        this.onDelete?.(thread.comment.id);
+        if ("commentId" in comment) {
+          this.onDeleteReply?.(comment.id);
+        } else {
+          this.onDelete?.(comment.id);
+        }
       });
     }
-
-    const repliesContainer = card.createDiv({ cls: "yaos-extension-comment-replies" });
-
-    let expanded = false;
-    header.addEventListener("click", () => {
-      if (isEditingComment) return;
-      expanded = !expanded;
-      if (expanded) {
-        repliesContainer.empty();
-        this.renderReplies(repliesContainer, thread);
-        requestAnimationFrame(() => {
-          repliesContainer.classList.add("expanded");
-        });
-      } else {
-        this.destroyReplyEditors();
-        repliesContainer.classList.remove("expanded");
-      }
-    });
   }
 
-  private renderReplies(container: HTMLElement, thread: CommentThread): void {
+  private renderReplyItems(container: HTMLElement, thread: CommentThread): void {
     container.empty();
 
     for (const reply of thread.replies) {
-      const replyEl = container.createDiv({ cls: "yaos-extension-reply" });
-      const replyMeta = replyEl.createDiv({ cls: "yaos-extension-comment-meta" });
-      const dot = replyMeta.createSpan({ cls: "yaos-extension-author-dot" });
-      dot.style.backgroundColor = reply.authorColor;
-      replyMeta.createSpan({ cls: "yaos-extension-author-name", text: reply.author });
-      replyMeta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(reply.createdAt) });
-      if (reply.editedAt) {
-        replyMeta.createSpan({ cls: "yaos-extension-edited-indicator", text: "(edited)" });
-      }
-
-      const isEditingReply = this.editingReplyId === reply.id;
-
-      if (reply.author === this.localDeviceName) {
-        if (!isEditingReply) {
-          const replyEditBtn = replyMeta.createEl("button", {
-            cls: "yaos-extension-edit-reply-btn",
-            text: "Edit",
-          });
-          replyEditBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            this.editingReplyId = reply.id;
-            this.editingCommentId = null;
-            this.destroyReplyEditors();
-            this.renderReplies(container, thread);
-          });
-        }
-        const replyDeleteBtn = replyMeta.createEl("button", {
-          cls: "yaos-extension-delete-reply-btn",
-          text: "Delete",
-        });
-        replyDeleteBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.onDeleteReply?.(reply.id);
-        });
-      }
-
-      const replyBody = replyEl.createDiv({ cls: "yaos-extension-comment-body" });
-
-      if (isEditingReply) {
-        const editContainer = replyBody.createDiv({ cls: "yaos-extension-comment-edit-mode" });
-
-        const editExtensions = this.getPeers
-          ? [editorMentionExtension(this.getPeers)]
-          : [];
-
-        const editHandle = createEmbeddedEditor(editContainer, {
-          extraExtensions: editExtensions,
-          app: this.app,
-        });
-        editHandle.setText(reply.text);
-        editHandle.focus();
-        this.replyEditors.push(editHandle);
-
-        const btnRow = editContainer.createDiv({ cls: "yaos-extension-edit-btn-row" });
-        const saveBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-save-btn", text: "Save" });
-        const cancelBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-cancel-btn", text: "Cancel" });
-        saveBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const newText = editHandle.getText().trim();
-          if (!newText) return;
-          this.editingReplyId = null;
-          this.onEditReply?.(reply.id, newText);
-        });
-        cancelBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.editingReplyId = null;
-          this.destroyReplyEditors();
-          this.renderReplies(container, thread);
-        });
-      } else {
-        void this.renderCommentBody(replyBody, reply.text);
-      }
+      this.renderReplyItem(container, reply, thread.comment.id);
     }
+  }
 
-    const replyInput = container.createDiv({ cls: "yaos-extension-reply-input" });
+  private renderReplyInput(parent: HTMLElement, thread: CommentThread): void {
+    const replyInput = parent.createDiv({ cls: "yaos-extension-reply-input" });
 
     const extensions = this.getPeers
       ? [editorMentionExtension(this.getPeers)]
@@ -404,6 +384,10 @@ export class InlineCommentPanel {
       this.onAddReply?.(thread.comment.id, text);
       replyHandle.clear();
     });
+  }
+
+  private renderReplyItem(parent: HTMLElement, reply: Reply, threadId: string): void {
+    this.renderCommentItem(parent, reply, threadId);
   }
 
   private async renderCommentBody(container: HTMLElement, text: string): Promise<void> {
