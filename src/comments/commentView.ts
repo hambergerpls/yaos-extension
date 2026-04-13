@@ -17,6 +17,8 @@ export class CommentView extends ItemView {
   private onResolve?: (commentId: string, resolved: boolean) => void;
   private onDelete?: (commentId: string) => void;
   private onDeleteReply?: (replyId: string) => void;
+  private onEditComment?: (commentId: string, newText: string) => void;
+  private onEditReply?: (replyId: string, newText: string) => void;
   private getPeers?: () => KnownDevice[];
   private editors: EmbeddedEditorHandle[] = [];
   private replyEditors: EmbeddedEditorHandle[] = [];
@@ -25,6 +27,8 @@ export class CommentView extends ItemView {
   private pendingSelection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null = null;
   private currentFilePath = "";
   private draftText = "";
+  private editingCommentId: string | null = null;
+  private editingReplyId: string | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -37,6 +41,8 @@ export class CommentView extends ItemView {
       onResolve?: (commentId: string, resolved: boolean) => void;
       onDelete?: (commentId: string) => void;
       onDeleteReply?: (replyId: string) => void;
+      onEditComment?: (commentId: string, newText: string) => void;
+      onEditReply?: (replyId: string, newText: string) => void;
       getPeers?: () => KnownDevice[];
     },
   ) {
@@ -49,6 +55,8 @@ export class CommentView extends ItemView {
     this.onResolve = callbacks?.onResolve;
     this.onDelete = callbacks?.onDelete;
     this.onDeleteReply = callbacks?.onDeleteReply;
+    this.onEditComment = callbacks?.onEditComment;
+    this.onEditReply = callbacks?.onEditReply;
     this.getPeers = callbacks?.getPeers;
   }
 
@@ -183,9 +191,47 @@ export class CommentView extends ItemView {
     colorDot.style.backgroundColor = thread.comment.authorColor;
     meta.createSpan({ cls: "yaos-extension-author-name", text: thread.comment.author });
     meta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(thread.comment.createdAt) });
+    if (thread.comment.editedAt) {
+      meta.createSpan({ cls: "yaos-extension-edited-indicator", text: "(edited)" });
+    }
+
+    const isEditingComment = this.editingCommentId === thread.comment.id;
 
     const body = card.createDiv({ cls: "yaos-extension-comment-body" });
-    void this.renderCommentBody(body, thread.comment.text);
+
+    if (isEditingComment) {
+      const editContainer = body.createDiv({ cls: "yaos-extension-comment-edit-mode" });
+
+      const extensions = this.getPeers
+        ? [editorMentionExtension(this.getPeers)]
+        : [];
+
+      const editHandle = createEmbeddedEditor(editContainer, {
+        extraExtensions: extensions,
+        app: this.app,
+      });
+      editHandle.setText(thread.comment.text);
+      editHandle.focus();
+      this.editors.push(editHandle);
+
+      const btnRow = editContainer.createDiv({ cls: "yaos-extension-edit-btn-row" });
+      const saveBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-save-btn", text: "Save" });
+      const cancelBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-cancel-btn", text: "Cancel" });
+      saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const newText = editHandle.getText().trim();
+        if (!newText) return;
+        this.editingCommentId = null;
+        this.onEditComment?.(thread.comment.id, newText);
+      });
+      cancelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.editingCommentId = null;
+        this.render();
+      });
+    } else {
+      void this.renderCommentBody(body, thread.comment.text);
+    }
 
     if (thread.replies.length > 0) {
       header.createSpan({ cls: "yaos-extension-reply-count", text: `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}` });
@@ -202,6 +248,18 @@ export class CommentView extends ItemView {
     });
 
     if (thread.comment.author === this.localDeviceName) {
+      if (!isEditingComment) {
+        const editBtn = actions.createEl("button", {
+          cls: "yaos-extension-edit-btn",
+          text: "Edit",
+        });
+        editBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.editingCommentId = thread.comment.id;
+          this.editingReplyId = null;
+          this.render();
+        });
+      }
       const deleteBtn = actions.createEl("button", {
         cls: "yaos-extension-delete-btn",
         text: "Delete",
@@ -216,6 +274,7 @@ export class CommentView extends ItemView {
 
     let expanded = false;
     header.addEventListener("click", () => {
+      if (isEditingComment) return;
       expanded = !expanded;
       if (expanded) {
         repliesContainer.empty();
@@ -240,7 +299,26 @@ export class CommentView extends ItemView {
       dot.style.backgroundColor = reply.authorColor;
       replyMeta.createSpan({ cls: "yaos-extension-author-name", text: reply.author });
       replyMeta.createSpan({ cls: "yaos-extension-timestamp", text: this.formatRelativeTime(reply.createdAt) });
+      if (reply.editedAt) {
+        replyMeta.createSpan({ cls: "yaos-extension-edited-indicator", text: "(edited)" });
+      }
+
+      const isEditingReply = this.editingReplyId === reply.id;
+
       if (reply.author === this.localDeviceName) {
+        if (!isEditingReply) {
+          const replyEditBtn = replyMeta.createEl("button", {
+            cls: "yaos-extension-edit-reply-btn",
+            text: "Edit",
+          });
+          replyEditBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.editingReplyId = reply.id;
+            this.editingCommentId = null;
+            this.destroyReplyEditors();
+            this.renderReplies(container, thread);
+          });
+        }
         const replyDeleteBtn = replyMeta.createEl("button", {
           cls: "yaos-extension-delete-reply-btn",
           text: "Delete",
@@ -250,8 +328,43 @@ export class CommentView extends ItemView {
           this.onDeleteReply?.(reply.id);
         });
       }
+
       const replyBody = replyEl.createDiv({ cls: "yaos-extension-comment-body" });
-      void this.renderCommentBody(replyBody, reply.text);
+
+      if (isEditingReply) {
+        const editContainer = replyBody.createDiv({ cls: "yaos-extension-comment-edit-mode" });
+
+        const editExtensions = this.getPeers
+          ? [editorMentionExtension(this.getPeers)]
+          : [];
+
+        const editHandle = createEmbeddedEditor(editContainer, {
+          extraExtensions: editExtensions,
+          app: this.app,
+        });
+        editHandle.setText(reply.text);
+        editHandle.focus();
+        this.replyEditors.push(editHandle);
+
+        const btnRow = editContainer.createDiv({ cls: "yaos-extension-edit-btn-row" });
+        const saveBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-save-btn", text: "Save" });
+        const cancelBtn = btnRow.createEl("button", { cls: "yaos-extension-edit-cancel-btn", text: "Cancel" });
+        saveBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const newText = editHandle.getText().trim();
+          if (!newText) return;
+          this.editingReplyId = null;
+          this.onEditReply?.(reply.id, newText);
+        });
+        cancelBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.editingReplyId = null;
+          this.destroyReplyEditors();
+          this.renderReplies(container, thread);
+        });
+      } else {
+        void this.renderCommentBody(replyBody, reply.text);
+      }
     }
 
     const replyInput = container.createDiv({ cls: "yaos-extension-reply-input" });

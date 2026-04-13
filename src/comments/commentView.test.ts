@@ -58,19 +58,35 @@ describe("CommentView", () => {
     document.body.innerHTML = "";
   });
 
+  function createView(threads: CommentThread[], callbacks?: Record<string, unknown>): CommentView {
+    const store = makeStore(threads);
+    const leaf = {
+      view: {} as any,
+    } as any;
+    const view = new CommentView(leaf, store, callbacks);
+    (view as any).registerDomEvent = vi.fn();
+    (view as any).app = {
+      workspace: {
+        getLeavesOfType: vi.fn(() => []),
+        openLinkText: vi.fn(),
+      },
+      vault: {
+        adapter: {
+          exists: vi.fn(),
+          read: vi.fn(),
+        },
+      },
+    };
+    return view;
+  }
+
   describe("delete comment button", () => {
     it("renders a delete button for the user's own comment", async () => {
       const threads: CommentThread[] = [
         { comment: makeComment({ author: "Alice" }), replies: [] },
       ];
-      const store = makeStore(threads);
       const onDelete = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDelete },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDelete });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -84,14 +100,8 @@ describe("CommentView", () => {
       const threads: CommentThread[] = [
         { comment: makeComment({ author: "Bob" }), replies: [] },
       ];
-      const store = makeStore(threads);
       const onDelete = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDelete },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDelete });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -104,14 +114,8 @@ describe("CommentView", () => {
       const threads: CommentThread[] = [
         { comment: makeComment({ id: "c-42", author: "Alice" }), replies: [] },
       ];
-      const store = makeStore(threads);
       const onDelete = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDelete },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDelete });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -132,14 +136,8 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r-42", commentId: "c1", author: "Alice" })],
         },
       ];
-      const store = makeStore(threads);
       const onDeleteReply = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDeleteReply },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDeleteReply });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -159,14 +157,8 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r-42", commentId: "c1", author: "Bob" })],
         },
       ];
-      const store = makeStore(threads);
       const onDeleteReply = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDeleteReply },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDeleteReply });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -185,14 +177,8 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r-99", commentId: "c1", author: "Alice" })],
         },
       ];
-      const store = makeStore(threads);
       const onDeleteReply = vi.fn();
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onDeleteReply },
-      );
+      const view = createView(threads, { localDeviceName: "Alice", onDeleteReply });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -215,13 +201,7 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r1", commentId: "c1", author: "Bob" })],
         },
       ];
-      const store = makeStore(threads);
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView(threads, { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -238,13 +218,7 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r1", commentId: "c1", author: "Bob" })],
         },
       ];
-      const store = makeStore(threads);
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView(threads, { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -261,13 +235,7 @@ describe("CommentView", () => {
           replies: [makeReply({ id: "r1", commentId: "c1", author: "Bob", text: "Reply text" })],
         },
       ];
-      const store = makeStore(threads);
-
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView(threads, { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -285,12 +253,7 @@ describe("CommentView", () => {
 
   describe("CM6 editor integration", () => {
     it("renders a CM6 editor for comment input", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
 
@@ -299,13 +262,8 @@ describe("CommentView", () => {
     });
 
     it("submits comment via button click", async () => {
-      const store = makeStore([]);
       const onAddComment = vi.fn();
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", onAddComment },
-      );
+      const view = createView([], { localDeviceName: "Alice", onAddComment });
 
       await view.onOpen();
 
@@ -320,12 +278,7 @@ describe("CommentView", () => {
     });
 
     it("cleans up CM6 editors on onClose", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
       expect(view.contentEl.querySelector(".cm-editor")).not.toBeNull();
@@ -338,12 +291,7 @@ describe("CommentView", () => {
 
   describe("draft preservation", () => {
     it("clears comment input draft when switching to a different file", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("file-a.md");
@@ -360,12 +308,7 @@ describe("CommentView", () => {
     });
 
     it("pendingSelection overrides saved draft", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -389,12 +332,7 @@ describe("CommentView", () => {
     });
 
     it("preserves comment input draft when refreshing with the same file", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
       await view.refresh("test.md");
@@ -419,12 +357,7 @@ describe("CommentView", () => {
     ];
 
     it("shows mention dropdown when typing @ in comment editor with getPeers callback", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", getPeers: () => mockPeers },
-      );
+      const view = createView([], { localDeviceName: "Alice", getPeers: () => mockPeers });
 
       await view.onOpen();
 
@@ -442,12 +375,7 @@ describe("CommentView", () => {
     });
 
     it("does not show mention dropdown when getPeers is not provided", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice" },
-      );
+      const view = createView([], { localDeviceName: "Alice" });
 
       await view.onOpen();
 
@@ -461,12 +389,7 @@ describe("CommentView", () => {
     });
 
     it("cleans up mention dropdown on onClose", async () => {
-      const store = makeStore([]);
-      const view = new CommentView(
-        {} as any,
-        store,
-        { localDeviceName: "Alice", getPeers: () => mockPeers },
-      );
+      const view = createView([], { localDeviceName: "Alice", getPeers: () => mockPeers });
 
       await view.onOpen();
 
@@ -480,6 +403,191 @@ describe("CommentView", () => {
       await view.onClose();
 
       expect(document.querySelectorAll(".yaos-extension-mention-item").length).toBe(0);
+    });
+  });
+
+  describe("edit comment button", () => {
+    it("renders an edit button for the user's own comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+      ];
+      const onEditComment = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditComment });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-btn");
+      expect(editBtn).not.toBeNull();
+      expect(editBtn?.textContent).toBe("Edit");
+    });
+
+    it("does not render an edit button for another user's comment", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Bob" }), replies: [] },
+      ];
+      const onEditComment = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditComment });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-btn");
+      expect(editBtn).toBeNull();
+    });
+
+    it("calls onEditComment with id and new text when save is clicked", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+      ];
+      const onEditComment = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditComment });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-btn") as HTMLElement;
+      editBtn.click();
+
+      const saveBtn = view.contentEl.querySelector(".yaos-extension-edit-save-btn") as HTMLElement;
+      expect(saveBtn).not.toBeNull();
+
+      // The edit mode now uses an embedded CM6 editor instead of a textarea.
+      // The editor handle is pushed to the editors array; the first handle is the
+      // main comment input, and the second is the edit editor.
+      const handles = getCommentEditorHandles(view);
+      const editHandle = handles[handles.length - 1]!;
+      editHandle.setText("updated comment");
+
+      saveBtn.click();
+
+      expect(onEditComment).toHaveBeenCalledWith("c1", "updated comment");
+    });
+  });
+
+  describe("edit reply button", () => {
+    it("renders an edit button for the user's own reply when thread is expanded", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [makeReply({ id: "r1", commentId: "c1", author: "Alice" })],
+        },
+      ];
+      const onEditReply = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditReply });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const header = view.contentEl.querySelector(".yaos-extension-comment-header") as HTMLElement;
+      header.click();
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-reply-btn");
+      expect(editBtn).not.toBeNull();
+    });
+
+    it("does not render an edit button for another user's reply", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [makeReply({ id: "r1", commentId: "c1", author: "Bob" })],
+        },
+      ];
+      const onEditReply = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditReply });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const header = view.contentEl.querySelector(".yaos-extension-comment-header") as HTMLElement;
+      header.click();
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-reply-btn");
+      expect(editBtn).toBeNull();
+    });
+
+    it("calls onEditReply with id and new text when save is clicked", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [makeReply({ id: "r1", commentId: "c1", author: "Alice", text: "original reply" })],
+        },
+      ];
+      const onEditReply = vi.fn();
+      const view = createView(threads, { localDeviceName: "Alice", onEditReply });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const header = view.contentEl.querySelector(".yaos-extension-comment-header") as HTMLElement;
+      header.click();
+
+      const editBtn = view.contentEl.querySelector(".yaos-extension-edit-reply-btn") as HTMLElement;
+      editBtn.click();
+
+      const saveBtn = view.contentEl.querySelector(".yaos-extension-edit-save-btn") as HTMLElement;
+      expect(saveBtn).not.toBeNull();
+
+      // The edit mode now uses an embedded CM6 editor instead of a textarea.
+      // The edit editor is pushed first, then the reply input editor, so index 0.
+      const replyHandles = getReplyEditorHandles(view);
+      const editHandle = replyHandles[0]!;
+      editHandle.setText("updated reply");
+
+      saveBtn.click();
+
+      expect(onEditReply).toHaveBeenCalledWith("r1", "updated reply");
+    });
+  });
+
+  describe("edited indicator", () => {
+    it("shows edited indicator on a comment that has been edited", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice", editedAt: 5000 }), replies: [] },
+      ];
+      const view = createView(threads, { localDeviceName: "Alice" });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const edited = view.contentEl.querySelector(".yaos-extension-edited-indicator");
+      expect(edited).not.toBeNull();
+      expect(edited?.textContent).toContain("edited");
+    });
+
+    it("does not show edited indicator on a comment that has not been edited", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+      ];
+      const view = createView(threads, { localDeviceName: "Alice" });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const edited = view.contentEl.querySelector(".yaos-extension-edited-indicator");
+      expect(edited).toBeNull();
+    });
+
+    it("shows edited indicator on a reply that has been edited", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Bob" }),
+          replies: [makeReply({ id: "r1", commentId: "c1", author: "Alice", editedAt: 6000 })],
+        },
+      ];
+      const view = createView(threads, { localDeviceName: "Alice" });
+
+      await view.onOpen();
+      await view.refresh("test.md");
+
+      const header = view.contentEl.querySelector(".yaos-extension-comment-header") as HTMLElement;
+      header.click();
+
+      await new Promise(r => setTimeout(r, 50));
+
+      const edited = view.contentEl.querySelector(".yaos-extension-reply .yaos-extension-edited-indicator");
+      expect(edited).not.toBeNull();
+      expect(edited?.textContent).toContain("edited");
     });
   });
 });

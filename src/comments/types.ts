@@ -11,6 +11,7 @@ export interface Comment {
   rangeLength: number;
   resolved: boolean;
   mentions: string[];
+  editedAt?: number;
 }
 
 export interface Reply {
@@ -21,6 +22,16 @@ export interface Reply {
   author: string;
   authorColor: string;
   createdAt: number;
+  mentions: string[];
+  editedAt?: number;
+}
+
+export interface EditEntry {
+  type: "edit";
+  targetId: string;
+  newText: string;
+  editedBy: string;
+  editedAt: number;
   mentions: string[];
 }
 
@@ -39,7 +50,7 @@ export interface Deletion {
   deletedAt: number;
 }
 
-export type CommentEntry = Comment | Reply | ResolveEntry | Deletion;
+export type CommentEntry = Comment | Reply | ResolveEntry | Deletion | EditEntry;
 
 export interface CommentThread {
   comment: Comment;

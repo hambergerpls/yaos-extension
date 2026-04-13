@@ -397,6 +397,69 @@
   border-color: var(--background-modifier-error, #e5534b);
 }
 
+.yaos-extension-edit-btn,
+.yaos-extension-edit-reply-btn {
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller, 11px);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.yaos-extension-edit-btn:hover,
+.yaos-extension-edit-reply-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.yaos-extension-comment-edit-mode .cm-editor {
+  min-height: 60px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+}
+
+.yaos-extension-edit-btn-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.yaos-extension-edit-save-btn {
+  padding: 3px 10px;
+  background: var(--interactive-accent, #7f6df2);
+  color: var(--text-on-accent, white);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+.yaos-extension-edit-cancel-btn {
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-ui-smaller, 12px);
+}
+
+.yaos-extension-edit-cancel-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.yaos-extension-edited-indicator {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller, 11px);
+  margin-left: 4px;
+  font-style: italic;
+}
+
 .yaos-extension-comment-replies {
   margin-top: 8px;
   padding-top: 8px;

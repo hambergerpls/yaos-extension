@@ -1,5 +1,5 @@
 import { Vault } from "obsidian";
-import type { Comment, Reply, CommentEntry, CommentThread, Deletion, ResolveEntry } from "./types";
+import type { Comment, Reply, CommentEntry, CommentThread, Deletion, ResolveEntry, EditEntry } from "./types";
 import { log } from "../logger";
 
 const COMMENTS_FOLDER = ".yaos-extension/comments";
@@ -52,6 +52,7 @@ export class CommentStore {
 
     const deletedIds = new Set<string>();
     const resolveMap = new Map<string, { resolved: boolean; at: number }>();
+    const editMap = new Map<string, { newText: string; editedAt: number; mentions: string[] }>();
     const comments = new Map<string, Comment>();
     const replies = new Map<string, Reply[]>();
 
@@ -66,6 +67,14 @@ export class CommentStore {
           const existing = resolveMap.get(re.commentId);
           if (!existing || re.at > existing.at) {
             resolveMap.set(re.commentId, { resolved: re.resolved, at: re.at });
+          }
+          break;
+        }
+        case "edit": {
+          const ee = entry as EditEntry;
+          const existing = editMap.get(ee.targetId);
+          if (!existing || ee.editedAt > existing.editedAt) {
+            editMap.set(ee.targetId, { newText: ee.newText, editedAt: ee.editedAt, mentions: ee.mentions });
           }
           break;
         }
@@ -97,7 +106,22 @@ export class CommentStore {
         comment.resolved = resolveState.resolved;
       }
 
+      const commentEdit = editMap.get(id);
+      if (commentEdit) {
+        comment.text = commentEdit.newText;
+        comment.mentions = commentEdit.mentions;
+        comment.editedAt = commentEdit.editedAt;
+      }
+
       const commentReplies = (replies.get(id) ?? []).filter(r => !deletedIds.has(r.id));
+      for (const reply of commentReplies) {
+        const replyEdit = editMap.get(reply.id);
+        if (replyEdit) {
+          reply.text = replyEdit.newText;
+          reply.mentions = replyEdit.mentions;
+          reply.editedAt = replyEdit.editedAt;
+        }
+      }
       commentReplies.sort((a, b) => a.createdAt - b.createdAt);
 
       threads.push({ comment, replies: commentReplies });
@@ -143,6 +167,21 @@ export class CommentStore {
       resolved,
       by: deviceName,
       at: Date.now(),
+    };
+    await this.vault.adapter.append(jsonlPath, JSON.stringify(entry) + "\n");
+  }
+
+  async editEntry(filePath: string, targetId: string, newText: string, deviceName: string): Promise<void> {
+    await this.ensureFolder();
+    const jsonlPath = this.filePathToJsonlPath(filePath);
+    const mentions = CommentStore.extractMentions(newText);
+    const entry: EditEntry = {
+      type: "edit",
+      targetId,
+      newText,
+      editedBy: deviceName,
+      editedAt: Date.now(),
+      mentions,
     };
     await this.vault.adapter.append(jsonlPath, JSON.stringify(entry) + "\n");
   }

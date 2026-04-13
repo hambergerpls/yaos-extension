@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CommentStore } from "./commentStore";
-import type { Comment, Reply, Deletion, ResolveEntry } from "./types";
+import type { Comment, Reply, Deletion, ResolveEntry, EditEntry } from "./types";
 
 function makeVault(files: Record<string, string>) {
   return {
@@ -370,6 +370,186 @@ describe("CommentStore", () => {
       expect(threads).toHaveLength(1);
       expect(threads[0]!.replies).toHaveLength(1);
       expect(threads[0]!.replies[0]!.text).toBe("Agreed!");
+    });
+  });
+
+  describe("edit entries", () => {
+    it("applies an edit to a comment's text", async () => {
+      const comment = makeComment({ id: "c1", text: "original" });
+      const edit: EditEntry = {
+        type: "edit",
+        targetId: "c1",
+        newText: "edited text",
+        editedBy: "Alice",
+        editedAt: 5000,
+        mentions: [],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" + JSON.stringify(edit) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads).toHaveLength(1);
+      expect(threads[0]!.comment.text).toBe("edited text");
+      expect(threads[0]!.comment.editedAt).toBe(5000);
+    });
+
+    it("applies an edit to a reply's text", async () => {
+      const comment = makeComment({ id: "c1" });
+      const reply = makeReply({ id: "r1", commentId: "c1", text: "original reply" });
+      const edit: EditEntry = {
+        type: "edit",
+        targetId: "r1",
+        newText: "edited reply",
+        editedBy: "Bob",
+        editedAt: 6000,
+        mentions: [],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" +
+        JSON.stringify(reply) + "\n" +
+        JSON.stringify(edit) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads).toHaveLength(1);
+      expect(threads[0]!.replies).toHaveLength(1);
+      expect(threads[0]!.replies[0]!.text).toBe("edited reply");
+      expect(threads[0]!.replies[0]!.editedAt).toBe(6000);
+    });
+
+    it("latest edit by timestamp wins when multiple edits exist", async () => {
+      const comment = makeComment({ id: "c1", text: "original" });
+      const edit1: EditEntry = {
+        type: "edit",
+        targetId: "c1",
+        newText: "first edit",
+        editedBy: "Alice",
+        editedAt: 5000,
+        mentions: [],
+      };
+      const edit2: EditEntry = {
+        type: "edit",
+        targetId: "c1",
+        newText: "second edit",
+        editedBy: "Alice",
+        editedAt: 7000,
+        mentions: [],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" +
+        JSON.stringify(edit1) + "\n" +
+        JSON.stringify(edit2) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads[0]!.comment.text).toBe("second edit");
+      expect(threads[0]!.comment.editedAt).toBe(7000);
+    });
+
+    it("updates mentions from an edit", async () => {
+      const comment = makeComment({ id: "c1", text: "original", mentions: ["Bob"] });
+      const edit: EditEntry = {
+        type: "edit",
+        targetId: "c1",
+        newText: "@Charlie take a look",
+        editedBy: "Alice",
+        editedAt: 5000,
+        mentions: ["Charlie"],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" + JSON.stringify(edit) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads[0]!.comment.mentions).toEqual(["Charlie"]);
+    });
+
+    it("does not apply edit to a deleted comment", async () => {
+      const comment = makeComment({ id: "c1", text: "original" });
+      const deletion: Deletion = {
+        type: "delete", targetId: "c1", deletedBy: "Alice", deletedAt: 4000,
+      };
+      const edit: EditEntry = {
+        type: "edit",
+        targetId: "c1",
+        newText: "should not appear",
+        editedBy: "Alice",
+        editedAt: 5000,
+        mentions: [],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" +
+        JSON.stringify(deletion) + "\n" +
+        JSON.stringify(edit) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads).toHaveLength(0);
+    });
+
+    it("does not apply edit to a deleted reply", async () => {
+      const comment = makeComment({ id: "c1" });
+      const reply = makeReply({ id: "r1", commentId: "c1", text: "original reply" });
+      const deletion: Deletion = {
+        type: "delete", targetId: "r1", deletedBy: "Bob", deletedAt: 4000,
+      };
+      const edit: EditEntry = {
+        type: "edit",
+        targetId: "r1",
+        newText: "should not appear",
+        editedBy: "Bob",
+        editedAt: 5000,
+        mentions: [],
+      };
+      const jsonl = JSON.stringify(comment) + "\n" +
+        JSON.stringify(reply) + "\n" +
+        JSON.stringify(deletion) + "\n" +
+        JSON.stringify(edit) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads[0]!.replies).toHaveLength(0);
+    });
+
+    it("preserves editedAt as undefined when no edit exists", async () => {
+      const comment = makeComment({ id: "c1", text: "original" });
+      const jsonl = JSON.stringify(comment) + "\n";
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": jsonl });
+      const store = new CommentStore(vault);
+
+      const threads = await store.getThreadsForFile("notes/my-note.md");
+      expect(threads[0]!.comment.editedAt).toBeUndefined();
+    });
+  });
+
+  describe("editEntry method", () => {
+    it("appends an edit entry line to the JSONL file", async () => {
+      const vault = makeVault({ ".yaos-extension/comments/notes%2Fmy-note.md.jsonl": "" });
+      const store = new CommentStore(vault);
+
+      await store.editEntry("notes/my-note.md", "c1", "updated text", "Alice");
+
+      const written = vault.adapter.append.mock.calls[0];
+      expect(written[0]).toBe(".yaos-extension/comments/notes%2Fmy-note.md.jsonl");
+      const parsed = JSON.parse(written[1]);
+      expect(parsed.type).toBe("edit");
+      expect(parsed.targetId).toBe("c1");
+      expect(parsed.newText).toBe("updated text");
+      expect(parsed.editedBy).toBe("Alice");
+      expect(parsed.editedAt).toBeTypeOf("number");
+      expect(parsed.mentions).toEqual([]);
+    });
+
+    it("creates the folder if needed before writing", async () => {
+      const vault = makeVault({});
+      const store = new CommentStore(vault);
+
+      await store.editEntry("notes/my-note.md", "c1", "updated", "Alice");
+
+      expect(vault.adapter.mkdir).toHaveBeenCalledWith(".yaos-extension/comments");
+      expect(vault.adapter.append).toHaveBeenCalled();
     });
   });
 

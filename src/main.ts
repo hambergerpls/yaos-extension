@@ -70,6 +70,8 @@ export default class YaosExtensionPlugin extends Plugin {
           onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
           onDelete: (targetId: string) => this.handleDelete(targetId),
           onDeleteReply: (targetId: string) => this.handleDelete(targetId),
+          onEditComment: (commentId: string, newText: string) => this.handleEditComment(commentId, newText),
+          onEditReply: (replyId: string, newText: string) => this.handleEditReply(replyId, newText),
           getPeers: () => {
             return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
           },
@@ -388,6 +390,77 @@ export default class YaosExtensionPlugin extends Plugin {
 
     await this.commentStore.deleteEntry(filePath, targetId, deviceInfo.name);
     await this.refreshCommentView();
+  }
+
+  private async handleEditComment(commentId: string, newText: string): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    const threads = await this.commentStore.getThreadsForFile(filePath);
+    const thread = threads.find(t => t.comment.id === commentId);
+    if (!thread || thread.comment.author !== deviceInfo.name) return;
+
+    const originalMentions = thread.comment.mentions;
+    await this.commentStore.editEntry(filePath, commentId, newText, deviceInfo.name);
+
+    const newMentions = CommentStore.extractMentions(newText);
+    const addedMentions = newMentions.filter(m => !originalMentions.includes(m));
+    await this.generateNotificationsForEdit(commentId, undefined, filePath, newText, addedMentions, deviceInfo.name);
+
+    await this.refreshCommentView();
+  }
+
+  private async handleEditReply(replyId: string, newText: string): Promise<void> {
+    const filePath = this.getActiveFilePath();
+    if (!filePath || !this.commentStore) return;
+
+    const deviceInfo = this.getDeviceInfo();
+    const threads = await this.commentStore.getThreadsForFile(filePath);
+    let originalMentions: string[] = [];
+    let commentId: string | undefined;
+    for (const t of threads) {
+      const reply = t.replies.find(r => r.id === replyId);
+      if (reply) {
+        if (reply.author !== deviceInfo.name) return;
+        originalMentions = reply.mentions;
+        commentId = t.comment.id;
+        break;
+      }
+    }
+    if (!commentId) return;
+
+    await this.commentStore.editEntry(filePath, replyId, newText, deviceInfo.name);
+
+    const newMentions = CommentStore.extractMentions(newText);
+    const addedMentions = newMentions.filter(m => !originalMentions.includes(m));
+    await this.generateNotificationsForEdit(commentId, replyId, filePath, newText, addedMentions, deviceInfo.name);
+
+    await this.refreshCommentView();
+  }
+
+  private async generateNotificationsForEdit(
+    commentId: string,
+    replyId: string | undefined,
+    filePath: string,
+    text: string,
+    addedMentions: string[],
+    fromDevice: string,
+  ): Promise<void> {
+    if (!this.notificationStore || addedMentions.length === 0) return;
+
+    const notifications = createMentionNotifications({
+      commentId,
+      replyId,
+      fileId: filePath,
+      fromDevice,
+      mentions: addedMentions,
+      preview: text,
+    });
+
+    for (const notif of notifications) {
+      await this.notificationStore.addNotification(notif);
+    }
   }
 
   private async generateNotificationsForComment(
