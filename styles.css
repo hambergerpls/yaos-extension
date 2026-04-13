@@ -136,19 +136,50 @@
 }
 
 /* ============================================================
- * YAOS Extension — Comment Sidebar View
+ * YAOS Extension — Inline Comment Panel
  * ============================================================ */
 
-.yaos-extension-comment-view {
-  padding: 12px;
+.yaos-extension-inline-comment-panel {
+  padding: 0 var(--file-margin-left, 24px);
   font-size: var(--font-ui-small, 13px);
+}
+
+.yaos-extension-inline-comment-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: var(--font-ui-small, 13px);
+  border-bottom: 1px solid var(--background-modifier-border);
+  user-select: none;
+}
+
+.yaos-extension-inline-comment-header:hover {
+  color: var(--text-normal);
+}
+
+.yaos-extension-inline-comment-content {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+}
+
+.yaos-extension-inline-comment-content.expanded {
+  max-height: 50vh;
+  opacity: 1;
+  overflow-y: auto;
+  padding-bottom: 12px;
 }
 
 .yaos-extension-comment-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100px;
+  height: 60px;
   color: var(--text-muted);
 }
 

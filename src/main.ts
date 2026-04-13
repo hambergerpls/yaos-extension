@@ -7,7 +7,7 @@ import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
 import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
 import { CommentStore } from "./comments/commentStore";
-import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
+import { InlineCommentPanel } from "./comments/inlineCommentPanel";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
 import { NotificationStore } from "./notifications/notificationStore";
 import { NotificationView, NOTIFICATIONS_VIEW_TYPE } from "./notifications/notificationView";
@@ -27,6 +27,7 @@ export default class YaosExtensionPlugin extends Plugin {
   notificationStore: NotificationStore | null = null;
   deviceStore: DeviceStore | null = null;
   deviceRegistry: DeviceRegistry = {};
+  inlinePanel: InlineCommentPanel | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -62,24 +63,28 @@ export default class YaosExtensionPlugin extends Plugin {
     this.deviceRegistry = await this.deviceStore.load();
 
     if (this.settings.showComments) {
-      this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
-        return new CommentView(leaf, this.commentStore!, {
-          localDeviceName: getLocalDeviceName(this.app),
-          onAddComment: (text: string) => this.handleAddComment(text),
-          onAddReply: (commentId: string, text: string) => this.handleAddReply(commentId, text),
-          onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
-          onDelete: (targetId: string) => this.handleDelete(targetId),
-          onDeleteReply: (targetId: string) => this.handleDelete(targetId),
-          onEditComment: (commentId: string, newText: string) => this.handleEditComment(commentId, newText),
-          onEditReply: (replyId: string, newText: string) => this.handleEditReply(replyId, newText),
-          getPeers: () => {
-            return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
-          },
-        });
+      this.inlinePanel = new InlineCommentPanel(this.commentStore!, this.app, {
+        localDeviceName: getLocalDeviceName(this.app),
+        onAddComment: (text: string) => this.handleAddComment(text),
+        onAddReply: (commentId: string, text: string) => this.handleAddReply(commentId, text),
+        onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
+        onDelete: (targetId: string) => this.handleDelete(targetId),
+        onDeleteReply: (targetId: string) => this.handleDelete(targetId),
+        onEditComment: (commentId: string, newText: string) => this.handleEditComment(commentId, newText),
+        onEditReply: (replyId: string, newText: string) => this.handleEditReply(replyId, newText),
+        getPeers: () => {
+          return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
+        },
       });
 
       registerCommentCommands(this, this.commentStore, this.getDeviceInfo.bind(this), () => {
         this.refreshCommentView();
+      }, (selection) => {
+        if (this.inlinePanel) {
+          this.inlinePanel.setPendingSelection(selection);
+          this.attachInlinePanel();
+          this.refreshCommentView();
+        }
       });
 
       this.registerEvent(
@@ -92,6 +97,7 @@ export default class YaosExtensionPlugin extends Plugin {
 
       this.registerEvent(
         this.app.workspace.on("active-leaf-change", () => {
+          this.attachInlinePanel();
           this.refreshCommentView();
         }),
       );
@@ -168,6 +174,7 @@ export default class YaosExtensionPlugin extends Plugin {
   }
 
   onunload() {
+    this.inlinePanel?.detach();
     this.tracker?.stop();
     this.statusBar?.destroy();
     resetEditorDiscovery();
@@ -236,16 +243,24 @@ export default class YaosExtensionPlugin extends Plugin {
     return activeFile?.path ?? null;
   }
 
+  private attachInlinePanel(): void {
+    if (!this.inlinePanel) return;
+
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!activeView) return;
+
+    const scroller = activeView.containerEl.querySelector(".cm-scroller") as HTMLElement | null;
+    if (!scroller) return;
+
+    this.inlinePanel.detach();
+    this.inlinePanel.attach(scroller);
+  }
+
   private async refreshCommentView(): Promise<void> {
     const filePath = this.getActiveFilePath();
-    if (!filePath) return;
+    if (!filePath || !this.inlinePanel) return;
 
-    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
-    for (const leaf of leaves) {
-      if (leaf.view instanceof CommentView) {
-        await leaf.view.refresh(filePath);
-      }
-    }
+    await this.inlinePanel.refresh(filePath);
   }
 
   private async openNotificationsView(): Promise<void> {
@@ -267,15 +282,8 @@ export default class YaosExtensionPlugin extends Plugin {
 
     if (!commentId) return;
 
+    this.attachInlinePanel();
     await this.refreshCommentView();
-
-    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
-    if (leaves.length === 0) {
-      const leaf = this.app.workspace.getRightLeaf(false);
-      if (leaf) {
-        await leaf.setViewState({ type: COMMENTS_VIEW_TYPE, active: true });
-      }
-    }
   }
 
   private async refreshNotifications(): Promise<void> {
@@ -625,7 +633,7 @@ class YaosExtensionSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Show comments")
       .setDesc(
-        "Enable inline comment highlights in the editor and the comments sidebar panel."
+        "Enable inline comment highlights in the editor and the inline comments panel."
       )
       .addToggle((toggle) =>
         toggle

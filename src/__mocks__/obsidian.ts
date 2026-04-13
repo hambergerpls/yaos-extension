@@ -1,3 +1,14 @@
+export class Component {
+  load(): void {}
+  unload(): void {}
+}
+
+export class MarkdownRenderer {
+  static render(_app: any, _markdown: string, _el: HTMLElement, _sourcePath: string, _component: Component): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 export class ItemView {
   containerEl: HTMLElement;
   contentEl: HTMLElement;

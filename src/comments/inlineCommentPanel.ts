@@ -1,14 +1,13 @@
-import { ItemView, MarkdownRenderer, Component, WorkspaceLeaf } from "obsidian";
+import { MarkdownRenderer, Component, type App } from "obsidian";
 import { CommentStore } from "./commentStore";
 import { createEmbeddedEditor, type EmbeddedEditorHandle } from "./embeddedEditor";
 import { editorMentionExtension } from "../mentions/editorMentionPlugin";
 import type { KnownDevice } from "../yaosApi";
 import type { CommentThread } from "./types";
 
-export const COMMENTS_VIEW_TYPE = "yaos-extension-comments";
-
-export class CommentView extends ItemView {
+export class InlineCommentPanel {
   private store: CommentStore;
+  private app: App;
   private threads: CommentThread[] = [];
   private localDeviceName: string;
   private onOpenThread?: (threadId: string) => void;
@@ -29,10 +28,14 @@ export class CommentView extends ItemView {
   private draftText = "";
   private editingCommentId: string | null = null;
   private editingReplyId: string | null = null;
+  private expanded = false;
+  private panelEl: HTMLElement | null = null;
+  private contentEl: HTMLElement | null = null;
+  private scrollerEl: HTMLElement | null = null;
 
   constructor(
-    leaf: WorkspaceLeaf,
     store: CommentStore,
+    app: App,
     callbacks?: {
       localDeviceName?: string;
       onOpenThread?: (threadId: string) => void;
@@ -46,8 +49,8 @@ export class CommentView extends ItemView {
       getPeers?: () => KnownDevice[];
     },
   ) {
-    super(leaf);
     this.store = store;
+    this.app = app;
     this.localDeviceName = callbacks?.localDeviceName ?? "";
     this.onOpenThread = callbacks?.onOpenThread;
     this.onAddComment = callbacks?.onAddComment;
@@ -60,40 +63,31 @@ export class CommentView extends ItemView {
     this.getPeers = callbacks?.getPeers;
   }
 
-  getViewType(): string {
-    return COMMENTS_VIEW_TYPE;
+  attach(scroller: HTMLElement): void {
+    if (this.panelEl) return;
+
+    this.scrollerEl = scroller;
+    const sizer = scroller.querySelector(".cm-sizer");
+    if (!sizer) return;
+
+    const contentContainer = sizer.querySelector(".cm-contentContainer");
+    if (!contentContainer) return;
+
+    this.panelEl = sizer.createDiv({ cls: "yaos-extension-inline-comment-panel" });
+    sizer.insertBefore(this.panelEl, contentContainer);
   }
 
-  getDisplayText(): string {
-    return "Comments";
-  }
-
-  getIcon(): string {
-    return "message-square";
-  }
-
-  async onOpen(): Promise<void> {
-    this.registerDomEvent(this.contentEl, "click", (evt: MouseEvent) => {
-      const target = evt.target as HTMLElement;
-      const link = target.closest("a.internal-link") as HTMLAnchorElement | null;
-      if (!link) return;
-      evt.preventDefault();
-      const href = link.getAttr("data-href") ?? link.getAttr("href");
-      if (href) {
-        this.app.workspace.openLinkText(href, this.currentFilePath, evt.ctrlKey || evt.metaKey);
-      }
-    });
-    await this.render();
-  }
-
-  async onClose(): Promise<void> {
+  detach(): void {
+    if (!this.panelEl) return;
     this.destroyEditors();
-    this.contentEl.empty();
+    this.panelEl.remove();
+    this.panelEl = null;
+    this.contentEl = null;
+    this.scrollerEl = null;
   }
 
   setPendingSelection(selection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null): void {
     this.pendingSelection = selection;
-    this.render();
   }
 
   async refresh(filePath: string): Promise<void> {
@@ -102,43 +96,34 @@ export class CommentView extends ItemView {
     this.currentFilePath = filePath;
     this.draftText = sameFile ? draft : "";
     this.threads = await this.store.getThreadsForFile(filePath);
-    await this.render();
+    this.render();
   }
 
-  getThreads(): CommentThread[] {
-    return this.threads;
-  }
+  private render(): void {
+    if (!this.panelEl) return;
 
-  private async render(): Promise<void> {
     this.renderGeneration++;
     this.destroyEditors();
-    this.contentEl.empty();
-    this.contentEl.addClass("yaos-extension-comment-view");
+    this.panelEl.empty();
 
-    this.renderInput();
+    const header = this.panelEl.createDiv({ cls: "yaos-extension-inline-comment-header" });
+    header.createSpan({ text: `Comments (${this.threads.length})` });
+    header.addEventListener("click", () => {
+      this.expanded = !this.expanded;
+      this.render();
+    });
 
-    if (this.threads.length === 0) {
-      const empty = this.contentEl.createDiv({ cls: "yaos-extension-comment-empty" });
-      empty.createSpan({ text: "No comments on this file" });
-      return;
-    }
-
-    const unresolved = this.threads.filter(t => !t.comment.resolved);
-    const resolved = this.threads.filter(t => t.comment.resolved);
-
-    for (const thread of unresolved) {
-      this.renderThreadCard(thread);
-    }
-
-    if (resolved.length > 0) {
-      this.contentEl.createDiv({ cls: "yaos-extension-comment-resolved-divider", text: "Resolved" });
-      for (const thread of resolved) {
-        this.renderThreadCard(thread);
-      }
+    this.contentEl = this.panelEl.createDiv({ cls: "yaos-extension-inline-comment-content" });
+    if (this.expanded) {
+      this.contentEl.addClass("expanded");
+      this.renderInput();
+      this.renderThreads();
     }
   }
 
   private renderInput(): void {
+    if (!this.contentEl) return;
+
     const inputContainer = this.contentEl.createDiv({ cls: "yaos-extension-comment-input" });
 
     const extensions = this.getPeers
@@ -176,7 +161,33 @@ export class CommentView extends ItemView {
     });
   }
 
+  private renderThreads(): void {
+    if (!this.contentEl) return;
+
+    if (this.threads.length === 0) {
+      const empty = this.contentEl.createDiv({ cls: "yaos-extension-comment-empty" });
+      empty.createSpan({ text: "No comments on this file" });
+      return;
+    }
+
+    const unresolved = this.threads.filter(t => !t.comment.resolved);
+    const resolved = this.threads.filter(t => t.comment.resolved);
+
+    for (const thread of unresolved) {
+      this.renderThreadCard(thread);
+    }
+
+    if (resolved.length > 0) {
+      this.contentEl.createDiv({ cls: "yaos-extension-comment-resolved-divider", text: "Resolved" });
+      for (const thread of resolved) {
+        this.renderThreadCard(thread);
+      }
+    }
+  }
+
   private renderThreadCard(thread: CommentThread): void {
+    if (!this.contentEl) return;
+
     const card = this.contentEl.createDiv({
       cls: `yaos-extension-comment-thread${thread.comment.resolved ? " resolved" : ""}`,
     });

@@ -16,7 +16,7 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   +-- comments/
   |     +-- types.ts           (Comment, Reply, ResolveEntry, Deletion, Notification)
   |     +-- commentStore.ts    (CRUD operations on JSONL files)
-  |     +-- commentView.ts     (Obsidian ItemView: sidebar panel, uses MarkdownRenderer)
+  |     +-- inlineCommentPanel.ts (DOM injection: inline panel in editor, uses MarkdownRenderer)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
   |     +-- embeddedEditor.ts  (Editor factory: full Obsidian editor with bare CM6 fallback)
@@ -45,7 +45,7 @@ Direct import relationships:
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
 | `comments/commentStore` | comments/types, obsidian (`Vault`) |
-| `comments/commentView` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (ItemView, MarkdownRenderer, Component) |
+| `comments/inlineCommentPanel` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (MarkdownRenderer, Component) |
 | `comments/commentCommands` | obsidian APIs |
 | `comments/commentDecorations` | comments/types |
 | `comments/editorDiscovery` | obsidian (`App` only) |
@@ -70,10 +70,10 @@ together.
 4. Creates `CommentStore` and `NotificationStore`. The notification store is
    initialized with local read state from plugin data.
 5. If `showComments` is enabled:
-   - Registers the `"yaos-extension-comments"` view
+   - Creates an `InlineCommentPanel` instance
    - Registers comment commands (Mod+Shift+M, context menu)
    - Watches `.yaos-extension/comments/` for vault changes
-   - Watches `active-leaf-change` to refresh the sidebar
+   - Watches `active-leaf-change` to attach/refresh the inline panel
 6. If `showNotifications` is enabled:
    - Registers the `"yaos-extension-notifications"` view
    - Registers the "Open notifications" command
@@ -117,7 +117,10 @@ Editor (user selects text + Mod+Shift+M or context menu)
 commentCommands :: getSelectionInfo(editor)
   |
   v
-CommentView (sidebar shows CM6 editor with selection quoted)
+main.ts :: setPendingSelection + attachInlinePanel + refreshCommentView
+  |
+  v
+InlineCommentPanel (injected in editor .cm-scroller, CM6 editor with selection quoted)
   |
   | user types comment, clicks "Comment" or presses Enter
   v
@@ -126,12 +129,12 @@ main.ts :: handleAddComment(text)
   | extracts mentions via CommentStore.extractMentions(text)
   | writes comment to JSONL via commentStore.addComment()
   | generates mention notifications via notificationHelpers
-  | refreshes sidebar
+  | refreshes inline panel
   v
-CommentView :: refresh(filePath)
+InlineCommentPanel :: refresh(filePath)
   |
   | reads threads from commentStore.getThreadsForFile()
-  | renders thread cards with expand/collapse, reply, resolve, delete
+  | renders collapsible header + thread cards with expand/collapse, reply, resolve, delete
   | editorMentionExtension provides @autocomplete in embedded CM6 editors
 ```
 
@@ -159,17 +162,19 @@ NotificationView (sidebar panel with notification cards)
   |
   | click on notification -> markAsRead + openFileAndComment
   v
-Editor opens file + CommentView scrolls to thread
+Editor opens file + inline panel attaches and shows thread
 ```
 
 ## Shutdown sequence
 
-1. `main.onunload()` calls `tracker.stop()` -- detaches the awareness listener,
+1. `main.onunload()` calls `inlinePanel.detach()` -- removes inline panel DOM,
+   destroys embedded CM6 editors.
+2. Calls `tracker.stop()` -- detaches the awareness listener,
    clears any polling interval, nulls the callback.
-2. Calls `statusBar.destroy()` -- removes tooltip DOM, clears the status bar element.
-3. Removes the `yaos-extension-names` class from `document.body`.
-4. Removes any lingering `.yaos-extension-tooltip` elements from the DOM.
-5. Removes any lingering `.yaos-extension-mention-dropdown` elements from the DOM.
+3. Calls `statusBar.destroy()` -- removes tooltip DOM, clears the status bar element.
+4. Removes the `yaos-extension-names` class from `document.body`.
+5. Removes any lingering `.yaos-extension-tooltip` elements from the DOM.
+6. Removes any lingering `.yaos-extension-mention-dropdown` elements from the DOM.
 
 ## Module details
 
@@ -263,20 +268,28 @@ Key methods:
 - `resolveComment` -- append resolve entry
 - `extractMentions(text)` -- static, parses `@Name` patterns
 
-### comments/commentView.ts -- Sidebar panel
+### comments/inlineCommentPanel.ts -- Inline panel in editor
 
-Obsidian `ItemView` with view type `"yaos-extension-comments"`. Renders thread
-cards with expand/collapse animation, reply input, resolve/reopen, and delete
-(own comments/replies only). Uses embedded CM6 editors (via `embeddedEditor.ts`)
-for comment and reply input, with `editorMentionExtension` for @mention autocomplete.
-Mention rendering uses DOM-safe `renderMentionsInto()` with `createTextNode`.
+DOM-injected panel that appears inline in the editor's `.cm-scroller` (source mode
+only), inserted before `.cm-sizer`. Renders a collapsible header ("Comments (N)")
+that expands to show comment input, thread cards with expand/collapse animation,
+reply input, resolve/reopen, and delete (own comments/replies only). Uses embedded
+CM6 editors (via `embeddedEditor.ts`) for comment and reply input, with
+`editorMentionExtension` for @mention autocomplete. Mention rendering uses DOM-safe
+`renderMentionsIntoFallback()` with `createTextNode`.
+
+Public API:
+- `attach(scroller)` -- injects panel DOM before `.cm-sizer`
+- `detach()` -- removes panel DOM and cleans up editors
+- `refresh(filePath)` -- loads threads and re-renders
+- `setPendingSelection(selection)` -- queues selection text for next render
 
 Constructor receives callbacks: `onAddComment`, `onAddReply`, `onResolve`,
-`onDelete`, `onDeleteReply`, `getPeers`.
+`onDelete`, `onDeleteReply`, `onEditComment`, `onEditReply`, `getPeers`.
 
 ### comments/embeddedEditor.ts -- Editor factory (Obsidian + fallback)
 
-Creates editor instances for the comment sidebar. The primary path uses
+Creates editor instances for the inline comment panel. The primary path uses
 Obsidian's internal editor component (discovered at runtime via
 `editorDiscovery.ts`) with a mock owner (`commentEditorOwner.ts`), giving full
 markdown syntax highlighting, formatting hotkeys, and workspace-level plugin
@@ -372,9 +385,9 @@ Four independent concerns:
    connection dots, peer dots, floating tooltip, and notification badge. Uses
    Obsidian CSS variables for theme compatibility.
 
-3. **Comment sidebar**: Styles for thread cards, author dots, quote blocks,
-   reply input, expand/collapse animations, delete buttons, and @mention
-   highlighting.
+3. **Comment inline panel**: Styles for the collapsible header, content area,
+   thread cards, author dots, quote blocks, reply input, expand/collapse
+   animations, delete buttons, and @mention highlighting.
 
 4. **Notification panel + mention dropdown**: Styles for notification cards,
    unread indicators, kind icons, the mention autocomplete dropdown with
@@ -403,12 +416,12 @@ flow for immediate visual feedback when toggling peer dots.
 - **`presenceTracker` is the only event subscriber**. There is exactly one
   awareness change listener in the entire plugin.
 - **Composition, not inheritance**. `main.ts` owns `tracker`, `statusBar`,
-  `commentStore`, and `notificationStore` as nullable fields. All are
+  `commentStore`, `notificationStore`, and `inlinePanel` as nullable fields. All are
   created/destroyed in the plugin lifecycle.
 - **Callback-based wiring**. The tracker takes a plain callback function, not an
   event emitter or observable. `main.ts` passes closures that bridge outputs
   to the appropriate views and stores.
-- **Views never import each other**. `CommentView` and `NotificationView` are
+- **Views never import each other**. `InlineCommentPanel` and `NotificationView` are
   siblings. All communication goes through `main.ts`.
 - **Comment/notification stores are siblings**. They never import each other.
   `main.ts` coordinates notification generation after comment operations.

@@ -1,5 +1,4 @@
 import { Plugin, Editor } from "obsidian";
-import { COMMENTS_VIEW_TYPE, CommentView } from "./commentView";
 import type { CommentStore } from "./commentStore";
 
 export interface DeviceInfo {
@@ -7,11 +6,19 @@ export interface DeviceInfo {
   color: string;
 }
 
+export interface SelectionInfo {
+  rangeText: string;
+  rangeOffset: number;
+  rangeContext: string;
+  rangeLength: number;
+}
+
 export function registerCommentCommands(
   plugin: Plugin,
   commentStore: CommentStore,
   getDeviceInfo: () => DeviceInfo,
   onCommentAdded?: () => void,
+  onPendingSelection?: (selection: SelectionInfo) => void,
 ): void {
   plugin.addCommand({
     id: "add-comment",
@@ -19,7 +26,7 @@ export function registerCommentCommands(
     hotkeys: [{ modifiers: ["Mod", "Shift"], key: "m" }],
     editorCallback: (editor: Editor) => {
       if (!editor.somethingSelected()) return;
-      handleAddComment(plugin, editor, getDeviceInfo, commentStore, onCommentAdded);
+      handleAddComment(editor, onCommentAdded, onPendingSelection);
     },
   });
 
@@ -32,7 +39,7 @@ export function registerCommentCommands(
           .setIcon("message-square")
           .setSection("yaos-extension")
           .onClick(() => {
-            handleAddComment(plugin, editor, getDeviceInfo, commentStore, onCommentAdded);
+            handleAddComment(editor, onCommentAdded, onPendingSelection);
           });
       });
     }),
@@ -40,42 +47,18 @@ export function registerCommentCommands(
 }
 
 function handleAddComment(
-  plugin: Plugin,
   editor: Editor,
-  getDeviceInfo: () => DeviceInfo,
-  commentStore: CommentStore,
   onCommentAdded?: () => void,
+  onPendingSelection?: (selection: SelectionInfo) => void,
 ): void {
   const info = getSelectionInfo(editor);
   if (!info) return;
 
-  const existingLeaves = plugin.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
-  if (existingLeaves.length === 0) {
-    const rightLeaf = plugin.app.workspace.getRightLeaf(false);
-    if (rightLeaf) {
-      rightLeaf.setViewState({ type: COMMENTS_VIEW_TYPE, active: true });
-    }
-  } else {
-    plugin.app.workspace.revealLeaf(existingLeaves[0]!);
-  }
-
-  setTimeout(() => {
-    const leaves = plugin.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
-    if (leaves.length > 0) {
-      const view = leaves[0]!.view as CommentView;
-      view.setPendingSelection(info);
-    }
-  }, 100);
-
+  onPendingSelection?.(info);
   onCommentAdded?.();
 }
 
-export function getSelectionInfo(editor: Editor): {
-  rangeText: string;
-  rangeOffset: number;
-  rangeContext: string;
-  rangeLength: number;
-} | null {
+export function getSelectionInfo(editor: Editor): SelectionInfo | null {
   if (!editor.somethingSelected()) return null;
 
   const selection = editor.getSelection();
