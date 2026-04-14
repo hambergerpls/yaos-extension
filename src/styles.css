@@ -235,6 +235,13 @@
   padding: 0;
 }
 
+.yaos-extension-obsidian-editor-container .cm-placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+  padding-left: 8px;
+  pointer-events: none;
+}
+
 .yaos-extension-comment-input .yaos-extension-obsidian-editor-container {
   margin-bottom: 4px;
 }

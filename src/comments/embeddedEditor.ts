@@ -1,6 +1,6 @@
 import { App } from "obsidian";
 import { EditorView, keymap, placeholder as cmPlaceholder } from "@codemirror/view";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, StateEffect, type Extension } from "@codemirror/state";
 import { getEditorComponentClass } from "./editorDiscovery";
 import { createMockOwner } from "./commentEditorOwner";
 
@@ -121,6 +121,14 @@ function createObsidianEditor(
     };
     cm.contentDOM.addEventListener("keydown", enterListener, true);
     cleanupFns.push(() => cm.contentDOM.removeEventListener("keydown", enterListener, true));
+  }
+
+  if (options.placeholder) {
+    try {
+      cm.dispatch({
+        effects: StateEffect.appendConfig.of(cmPlaceholder(options.placeholder)),
+      });
+    } catch {}
   }
 
   // Note: extraExtensions (e.g. @mention) are NOT injected here for the Obsidian
