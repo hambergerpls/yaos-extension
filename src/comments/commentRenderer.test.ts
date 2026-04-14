@@ -321,7 +321,7 @@ describe("CommentRenderer", () => {
   });
 
   describe("show replies button", () => {
-    it("renders 'Hide replies' button when thread has more than 3 replies (auto-expanded)", async () => {
+    it("renders 'Show N-1 more replies' button when thread has more than 3 replies (default collapsed)", async () => {
       const threads: CommentThread[] = [
         {
           comment: makeComment({ id: "c1" }),
@@ -338,10 +338,13 @@ describe("CommentRenderer", () => {
 
       const showBtn = container.querySelector(".yaos-extension-show-replies");
       expect(showBtn).not.toBeNull();
-      expect(showBtn?.textContent).toContain("Hide replies");
+      expect(showBtn?.textContent).toContain("Show 3 more replies");
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
+      expect(replyItems?.length).toBe(1);
     });
 
-    it("collapses replies when 'Hide replies' is clicked and shows 'Show N replies'", async () => {
+    it("expands all replies when 'Show N-1 more replies' is clicked", async () => {
       const threads: CommentThread[] = [
         {
           comment: makeComment({ id: "c1" }),
@@ -357,14 +360,15 @@ describe("CommentRenderer", () => {
       await renderer.refresh(container, "test.md");
 
       const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
-      expect(showBtn?.textContent).toContain("Hide replies");
+      expect(showBtn?.textContent).toContain("Show 3 more replies");
 
       showBtn.click();
 
+      const updatedBtn = container.querySelector(".yaos-extension-show-replies");
+      expect(updatedBtn).toBeNull();
       const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
-      expect(repliesContainer?.classList.contains("expanded")).toBe(false);
-      const updatedBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
-      expect(updatedBtn?.textContent).toContain("Show 4 replies");
+      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
+      expect(replyItems?.length).toBe(4);
     });
 
     it("does not render show replies button when thread has 3 or fewer replies", async () => {
@@ -395,35 +399,7 @@ describe("CommentRenderer", () => {
       expect(showBtn).toBeNull();
     });
 
-    it("expands replies when 'Show N replies' is clicked after collapsing", async () => {
-      const threads: CommentThread[] = [
-        {
-          comment: makeComment({ id: "c1" }),
-          replies: [
-            makeReply({ id: "r1", commentId: "c1", author: "Bob" }),
-            makeReply({ id: "r2", commentId: "c1" }),
-            makeReply({ id: "r3", commentId: "c1" }),
-            makeReply({ id: "r4", commentId: "c1" }),
-          ],
-        },
-      ];
-      const renderer = createRenderer(threads);
-      await renderer.refresh(container, "test.md");
-
-      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
-      showBtn.click();
-      const collapsedBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
-      expect(collapsedBtn?.textContent).toContain("Show 4 replies");
-
-      collapsedBtn.click();
-
-      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
-      expect(repliesContainer?.classList.contains("expanded")).toBe(true);
-      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
-      expect(replyItems?.length).toBe(4);
-    });
-
-    it("shows reply author avatars when auto-expanded", async () => {
+    it("shows reply author avatars when expanded", async () => {
       const threads: CommentThread[] = [
         {
           comment: makeComment({ id: "c1", author: "Alice", authorColor: "#f00" }),
@@ -438,12 +414,59 @@ describe("CommentRenderer", () => {
       const renderer = createRenderer(threads);
       await renderer.refresh(container, "test.md");
 
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
+
       const avatars = container.querySelectorAll(".yaos-extension-comment-replies .yaos-extension-avatar");
       expect(avatars.length).toBe(4);
       expect(avatars[0]!.textContent).toBe("B");
     });
 
-    it("renders delete button for own reply when replies are auto-expanded", async () => {
+    it("shows last reply with correct author when collapsed", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1", author: "Alice", authorColor: "#f00" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", author: "Bob", authorColor: "#0f0" }),
+            makeReply({ id: "r2", commentId: "c1", author: "Charlie", authorColor: "#00f" }),
+            makeReply({ id: "r3", commentId: "c1", author: "Dave", authorColor: "#ff0" }),
+            makeReply({ id: "r4", commentId: "c1", author: "Eve", authorColor: "#f0f" }),
+          ],
+        },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const repliesContainer = container.querySelector(".yaos-extension-comment-replies");
+      const replyItems = repliesContainer?.querySelectorAll(".yaos-extension-comment-item");
+      expect(replyItems?.length).toBe(1);
+
+      const avatar = repliesContainer?.querySelector(".yaos-extension-avatar");
+      expect(avatar?.textContent).toBe("E");
+      const authorName = repliesContainer?.querySelector(".yaos-extension-author-name");
+      expect(authorName?.textContent).toBe("Eve");
+    });
+
+    it("shows last reply with correct text when collapsed", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1", text: "first" }),
+            makeReply({ id: "r2", commentId: "c1", text: "second" }),
+            makeReply({ id: "r3", commentId: "c1", text: "third" }),
+            makeReply({ id: "r4", commentId: "c1", text: "last reply text" }),
+          ],
+        },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const body = container.querySelector(".yaos-extension-comment-replies .yaos-extension-comment-body");
+      expect(body?.textContent).toContain("last reply text");
+    });
+
+    it("renders delete button for own reply when replies are expanded", async () => {
       const threads: CommentThread[] = [
         {
           comment: makeComment({ id: "c1", author: "Bob" }),
@@ -458,6 +481,9 @@ describe("CommentRenderer", () => {
       const onDeleteReply = vi.fn();
       const renderer = createRenderer(threads, { localDeviceName: "Alice", onDeleteReply });
       await renderer.refresh(container, "test.md");
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
 
       const deleteBtn = container.querySelector(".yaos-extension-comment-replies .yaos-extension-delete-btn");
       expect(deleteBtn).not.toBeNull();
@@ -478,6 +504,9 @@ describe("CommentRenderer", () => {
       const onDeleteReply = vi.fn();
       const renderer = createRenderer(threads, { localDeviceName: "Alice", onDeleteReply });
       await renderer.refresh(container, "test.md");
+
+      const showBtn = container.querySelector(".yaos-extension-show-replies") as HTMLElement;
+      showBtn.click();
 
       const deleteBtn = container.querySelector(".yaos-extension-comment-replies .yaos-extension-delete-btn") as HTMLElement;
       deleteBtn.click();

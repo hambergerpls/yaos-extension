@@ -46,7 +46,7 @@ export class CommentRenderer {
   private draftText = "";
   private editingCommentId: string | null = null;
   private editingReplyId: string | null = null;
-  private collapsedReplies = new Set<string>();
+  private expandedReplies = new Set<string>();
   private container: HTMLElement | null = null;
   private options: RenderOptions;
 
@@ -198,28 +198,25 @@ export class CommentRenderer {
     this.renderCommentItem(wrapper, thread.comment, thread.comment.id);
 
     if (thread.replies.length > 3) {
-      const isCollapsed = this.collapsedReplies.has(thread.comment.id);
-
-      const showBtn = wrapper.createDiv({ cls: "yaos-extension-show-replies" });
-      const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies" });
+      const isCollapsed = !this.expandedReplies.has(thread.comment.id);
 
       if (isCollapsed) {
-        showBtn.textContent = `Show ${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}`;
+        const hiddenCount = thread.replies.length - 1;
+        const showBtn = wrapper.createDiv({ cls: "yaos-extension-show-replies" });
+        showBtn.textContent = `Show ${hiddenCount} more ${hiddenCount === 1 ? "reply" : "replies"}`;
+
+        const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies expanded" });
+        this.renderCommentItem(repliesContainer, thread.replies[thread.replies.length - 1]!, thread.comment.id);
+
+        showBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.expandedReplies.add(thread.comment.id);
+          if (this.container) this.renderAll(this.container);
+        });
       } else {
-        showBtn.textContent = "Hide replies";
-        repliesContainer.classList.add("expanded");
+        const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies expanded" });
         this.renderReplyItems(repliesContainer, thread);
       }
-
-      showBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (this.collapsedReplies.has(thread.comment.id)) {
-          this.collapsedReplies.delete(thread.comment.id);
-        } else {
-          this.collapsedReplies.add(thread.comment.id);
-        }
-        if (this.container) this.renderAll(this.container);
-      });
     } else if (thread.replies.length > 0) {
       const repliesContainer = wrapper.createDiv({ cls: "yaos-extension-comment-replies expanded" });
       this.renderReplyItems(repliesContainer, thread);

@@ -462,6 +462,16 @@
   width: calc(100% - 40px);
 }
 
+.yaos-extension-show-replies::before {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0;
+  width: 1.5px;
+  height: 100%;
+  background-color: var(--background-modifier-border);
+}
+
 .yaos-extension-show-replies:hover {
   background-color: var(--background-modifier-hover, rgba(0, 0, 0, 0.04));
   color: var(--text-normal);
