@@ -140,8 +140,104 @@ describe("InlineCommentPanel", () => {
     });
   });
 
-  describe("collapsible header", () => {
-    it("renders a collapsed header showing Comments count when no threads", async () => {
+  describe("no collapsible header", () => {
+    it("does not render a collapsible header", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment(), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const header = container.querySelector(".yaos-extension-inline-comment-header");
+      expect(header).toBeNull();
+    });
+
+    it("does not render a content wrapper", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment(), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const content = container.querySelector(".yaos-extension-inline-comment-content");
+      expect(content).toBeNull();
+    });
+  });
+
+  describe("earliest unresolved only", () => {
+    it("renders only the earliest unresolved thread", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+        { comment: makeComment({ id: "c2", author: "Bob" }), replies: [] },
+        { comment: makeComment({ id: "c3", author: "Carol" }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(1);
+      const authorName = threadCards[0]?.querySelector(".yaos-extension-author-name");
+      expect(authorName?.textContent).toBe("Alice");
+    });
+
+    it("does not render resolved threads", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(0);
+    });
+
+    it("renders the add comment input even when all threads are resolved", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
+    });
+
+    it("hides add comment input when there are unresolved threads", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: false }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).toBeNull();
+    });
+
+    it("renders the add comment input when there are no threads", async () => {
       const panel = createPanel([]);
       const container = createContainer();
       const scroller = container.querySelector(".cm-scroller")!;
@@ -149,84 +245,11 @@ describe("InlineCommentPanel", () => {
       panel.attach(scroller as HTMLElement);
       await panel.refresh("test.md");
 
-      const header = container.querySelector(".yaos-extension-inline-comment-header");
-      expect(header).not.toBeNull();
-      expect(header?.textContent).toContain("Comments");
-      expect(header?.textContent).toContain("0");
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
     });
 
-    it("renders header with thread count", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment({ id: "c1" }), replies: [] },
-        { comment: makeComment({ id: "c2" }), replies: [] },
-      ];
-      const panel = createPanel(threads);
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header");
-      expect(header?.textContent).toContain("2");
-    });
-
-    it("is collapsed by default — content is hidden", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment(), replies: [] },
-      ];
-      const panel = createPanel(threads);
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const content = container.querySelector(".yaos-extension-inline-comment-content");
-      expect(content).not.toBeNull();
-      expect(content?.classList.contains("expanded")).toBe(false);
-    });
-
-    it("expands content when header is clicked", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment(), replies: [] },
-      ];
-      const panel = createPanel(threads);
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
-      const content = container.querySelector(".yaos-extension-inline-comment-content");
-      expect(content?.classList.contains("expanded")).toBe(true);
-    });
-
-    it("collapses content when header is clicked again", async () => {
-      const threads: CommentThread[] = [
-        { comment: makeComment(), replies: [] },
-      ];
-      const panel = createPanel(threads);
-      const container = createContainer();
-      const scroller = container.querySelector(".cm-scroller")!;
-
-      panel.attach(scroller as HTMLElement);
-      await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-      header.click();
-
-      const content = container.querySelector(".yaos-extension-inline-comment-content");
-      expect(content?.classList.contains("expanded")).toBe(false);
-    });
-  });
-
-  describe("delegation to CommentRenderer", () => {
-    it("renders thread content when expanded", async () => {
+    it("renders thread content immediately without needing to expand", async () => {
       const threads: CommentThread[] = [
         { comment: makeComment({ author: "Alice", authorColor: "#f00" }), replies: [] },
       ];
@@ -237,11 +260,36 @@ describe("InlineCommentPanel", () => {
       panel.attach(scroller as HTMLElement);
       await panel.refresh("test.md");
 
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
-
       const avatar = container.querySelector(".yaos-extension-avatar");
       expect(avatar).not.toBeNull();
+    });
+
+    it("skips the resolved divider", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: false }), replies: [] },
+        { comment: makeComment({ id: "c2", resolved: true }), replies: [] },
+      ];
+      const panel = createPanel(threads);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const divider = container.querySelector(".yaos-extension-comment-resolved-divider");
+      expect(divider).toBeNull();
+    });
+
+    it("does not render empty state message", async () => {
+      const panel = createPanel([]);
+      const container = createContainer();
+      const scroller = container.querySelector(".cm-scroller")!;
+
+      panel.attach(scroller as HTMLElement);
+      await panel.refresh("test.md");
+
+      const empty = container.querySelector(".yaos-extension-comment-empty");
+      expect(empty).toBeNull();
     });
   });
 
@@ -274,9 +322,6 @@ describe("InlineCommentPanel", () => {
         rangeLength: 13,
       });
       await panel.refresh("test.md");
-
-      const header = container.querySelector(".yaos-extension-inline-comment-header") as HTMLElement;
-      header.click();
 
       const cmEditors = container.querySelectorAll(".cm-editor");
       const commentEditor = cmEditors[0]!;

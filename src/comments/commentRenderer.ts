@@ -18,6 +18,11 @@ export interface CommentRendererCallbacks {
   getPeers?: () => KnownDevice[];
 }
 
+export interface RenderOptions {
+  maxUnresolved?: number;
+  showResolved?: boolean;
+}
+
 export class CommentRenderer {
   private store: CommentStore;
   private app: App;
@@ -43,8 +48,9 @@ export class CommentRenderer {
   private editingReplyId: string | null = null;
   private collapsedReplies = new Set<string>();
   private container: HTMLElement | null = null;
+  private options: RenderOptions;
 
-  constructor(store: CommentStore, app: App, callbacks?: CommentRendererCallbacks) {
+  constructor(store: CommentStore, app: App, callbacks?: CommentRendererCallbacks, options?: RenderOptions) {
     this.store = store;
     this.app = app;
     this.localDeviceName = callbacks?.localDeviceName ?? "";
@@ -57,6 +63,7 @@ export class CommentRenderer {
     this.onEditComment = callbacks?.onEditComment;
     this.onEditReply = callbacks?.onEditReply;
     this.getPeers = callbacks?.getPeers;
+    this.options = options ?? {};
   }
 
   setPendingSelection(selection: { rangeText: string; rangeOffset: number; rangeContext: string; rangeLength: number } | null): void {
@@ -104,7 +111,13 @@ export class CommentRenderer {
     this.destroyEditors();
     container.empty();
 
-    this.renderInput(container);
+    const unresolved = this.threads.filter(t => !t.comment.resolved);
+    const hasUnresolved = unresolved.length > 0;
+    const hideInput = this.options.maxUnresolved !== undefined && hasUnresolved;
+
+    if (!hideInput) {
+      this.renderInput(container);
+    }
     this.renderThreads(container);
   }
 
@@ -147,13 +160,21 @@ export class CommentRenderer {
   }
 
   private renderThreads(container: HTMLElement): void {
+    const unresolved = this.threads.filter(t => !t.comment.resolved);
+
+    if (this.options.maxUnresolved !== undefined) {
+      for (const thread of unresolved.slice(0, this.options.maxUnresolved)) {
+        this.renderThreadCard(container, thread);
+      }
+      return;
+    }
+
     if (this.threads.length === 0) {
       const empty = container.createDiv({ cls: "yaos-extension-comment-empty" });
       empty.createSpan({ text: "No comments on this file" });
       return;
     }
 
-    const unresolved = this.threads.filter(t => !t.comment.resolved);
     const resolved = this.threads.filter(t => t.comment.resolved);
 
     for (const thread of unresolved) {

@@ -3,6 +3,24 @@ import { CommentRenderer } from "./commentRenderer";
 import { CommentStore } from "./commentStore";
 import type { CommentThread, Comment, Reply } from "./types";
 
+function createRendererWithOptions(threads: CommentThread[], options: { maxUnresolved?: number; showResolved?: boolean }, callbacks?: Record<string, unknown>): CommentRenderer {
+  const store = makeStore(threads);
+  const app = {
+    workspace: {
+      getLeavesOfType: vi.fn(() => []),
+      openLinkText: vi.fn(),
+    },
+    vault: {
+      adapter: {
+        exists: vi.fn(),
+        read: vi.fn(),
+      },
+    },
+  } as any;
+
+  return new CommentRenderer(store, app, callbacks, options);
+}
+
 function makeStore(threads: CommentThread[]) {
   return {
     getThreadsForFile: vi.fn(async () => threads),
@@ -725,6 +743,132 @@ describe("CommentRenderer", () => {
       submitBtn.click();
 
       expect(onAddComment).toHaveBeenCalledWith("New comment");
+    });
+  });
+
+  describe("maxUnresolved option", () => {
+    it("renders only 1 unresolved thread when maxUnresolved is 1", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+        { comment: makeComment({ id: "c2", author: "Bob" }), replies: [] },
+        { comment: makeComment({ id: "c3", author: "Carol" }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(1);
+      const authorName = threadCards[0]?.querySelector(".yaos-extension-author-name");
+      expect(authorName?.textContent).toBe("Alice");
+    });
+
+    it("skips resolved section when maxUnresolved is set", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: false }), replies: [] },
+        { comment: makeComment({ id: "c2", resolved: true }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const divider = container.querySelector(".yaos-extension-comment-resolved-divider");
+      expect(divider).toBeNull();
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(1);
+      expect(threadCards[0]?.classList.contains("resolved")).toBe(false);
+    });
+
+    it("renders no thread cards when all threads are resolved and maxUnresolved is set", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+        { comment: makeComment({ id: "c2", resolved: true }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(0);
+      const divider = container.querySelector(".yaos-extension-comment-resolved-divider");
+      expect(divider).toBeNull();
+      const empty = container.querySelector(".yaos-extension-comment-empty");
+      expect(empty).toBeNull();
+    });
+
+    it("still renders comment input when no unresolved threads with maxUnresolved", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
+    });
+
+    it("renders 2 unresolved threads when maxUnresolved is 2", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", author: "Alice" }), replies: [] },
+        { comment: makeComment({ id: "c2", author: "Bob" }), replies: [] },
+        { comment: makeComment({ id: "c3", author: "Carol" }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 2 });
+      await renderer.refresh(container, "test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(2);
+    });
+
+    it("does not limit threads when maxUnresolved is not set", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+        { comment: makeComment({ id: "c2" }), replies: [] },
+        { comment: makeComment({ id: "c3" }), replies: [] },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const threadCards = container.querySelectorAll(".yaos-extension-comment-thread");
+      expect(threadCards.length).toBe(3);
+    });
+
+    it("hides comment input when maxUnresolved is set and unresolved threads exist", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).toBeNull();
+    });
+
+    it("shows comment input when maxUnresolved is set and no unresolved threads exist", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const renderer = createRendererWithOptions(threads, { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
+    });
+
+    it("shows comment input when maxUnresolved is set and there are no threads", async () => {
+      const renderer = createRendererWithOptions([], { maxUnresolved: 1 });
+      await renderer.refresh(container, "test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
+    });
+
+    it("always shows comment input when maxUnresolved is not set", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1" }), replies: [] },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const input = container.querySelector(".yaos-extension-comment-input");
+      expect(input).not.toBeNull();
     });
   });
 });

@@ -5,11 +5,8 @@ import type { KnownDevice } from "../yaosApi";
 
 export class InlineCommentPanel {
   private renderer: CommentRenderer;
-  private expanded = false;
   private panelEl: HTMLElement | null = null;
-  private contentEl: HTMLElement | null = null;
   private scrollerEl: HTMLElement | null = null;
-  private currentFilePath = "";
 
   constructor(
     store: CommentStore,
@@ -27,7 +24,7 @@ export class InlineCommentPanel {
       getPeers?: () => KnownDevice[];
     },
   ) {
-    this.renderer = new CommentRenderer(store, app, callbacks);
+    this.renderer = new CommentRenderer(store, app, callbacks, { maxUnresolved: 1 });
   }
 
   attach(scroller: HTMLElement): void {
@@ -49,7 +46,6 @@ export class InlineCommentPanel {
     this.renderer.destroy();
     this.panelEl.remove();
     this.panelEl = null;
-    this.contentEl = null;
     this.scrollerEl = null;
   }
 
@@ -59,39 +55,6 @@ export class InlineCommentPanel {
 
   async refresh(filePath: string): Promise<void> {
     if (!this.panelEl) return;
-
-    await this.renderer.loadThreads(filePath);
-    this.currentFilePath = filePath;
-
-    this.panelEl.empty();
-
-    const header = this.panelEl.createDiv({ cls: "yaos-extension-inline-comment-header" });
-    header.createSpan({ text: `Comments (${this.renderer.getThreadCount()})` });
-    header.addEventListener("click", () => {
-      this.expanded = !this.expanded;
-      this.updateContent();
-    });
-
-    this.contentEl = this.panelEl.createDiv({ cls: "yaos-extension-inline-comment-content" });
-
-    if (this.expanded) {
-      this.contentEl.addClass("expanded");
-      this.renderer.render(this.contentEl);
-    }
-  }
-
-  private updateContent(): void {
-    if (!this.panelEl || !this.contentEl) return;
-
-    if (this.expanded) {
-      this.renderer.destroy();
-      this.contentEl.empty();
-      this.contentEl.addClass("expanded");
-      this.renderer.render(this.contentEl);
-    } else {
-      this.renderer.destroy();
-      this.contentEl.empty();
-      this.contentEl.removeClass("expanded");
-    }
+    await this.renderer.refresh(this.panelEl, filePath);
   }
 }
