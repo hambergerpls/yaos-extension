@@ -297,17 +297,20 @@ export class CommentRenderer {
 
     const actions = item.createDiv({ cls: "yaos-extension-comment-actions" });
 
-    const resolveBtn = actions.createEl("button", {
-      cls: "clickable-icon yaos-extension-resolve-btn",
-    });
     const isResolved = "resolved" in comment && (comment as Comment).resolved;
-    setIcon(resolveBtn, "check");
-    resolveBtn.setAttribute("aria-label", isResolved ? "Reopen" : "Resolve");
-    resolveBtn.title = isResolved ? "Reopen" : "Resolve";
-    resolveBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.onResolve?.(threadId, !isResolved);
-    });
+
+    if ("resolved" in comment) {
+      const resolveBtn = actions.createEl("button", {
+        cls: "clickable-icon yaos-extension-resolve-btn",
+      });
+      setIcon(resolveBtn, "check");
+      resolveBtn.setAttribute("aria-label", isResolved ? "Reopen" : "Resolve");
+      resolveBtn.title = isResolved ? "Reopen" : "Resolve";
+      resolveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.onResolve?.(threadId, !isResolved);
+      });
+    }
 
     if (comment.author === this.localDeviceName) {
       if (!isEditing) {

@@ -600,6 +600,42 @@ describe("CommentRenderer", () => {
     });
   });
 
+  describe("resolve button placement", () => {
+    it("renders resolve button on root comment only", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [
+            makeReply({ id: "r1", commentId: "c1" }),
+            makeReply({ id: "r2", commentId: "c1" }),
+          ],
+        },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const allResolveBtns = container.querySelectorAll(".yaos-extension-resolve-btn");
+      expect(allResolveBtns.length).toBe(1);
+    });
+
+    it("does not render resolve button on reply items", async () => {
+      const threads: CommentThread[] = [
+        {
+          comment: makeComment({ id: "c1" }),
+          replies: [makeReply({ id: "r1", commentId: "c1" })],
+        },
+      ];
+      const renderer = createRenderer(threads);
+      await renderer.refresh(container, "test.md");
+
+      const items = container.querySelectorAll(".yaos-extension-comment-item");
+      expect(items.length).toBe(2);
+      const replyItem = items[1]!;
+      const resolveBtnOnReply = replyItem.querySelector(".yaos-extension-resolve-btn");
+      expect(resolveBtnOnReply).toBeNull();
+    });
+  });
+
   describe("resolved threads", () => {
     it("renders resolved threads with resolved class", async () => {
       const threads: CommentThread[] = [
@@ -622,6 +658,20 @@ describe("CommentRenderer", () => {
 
       const resolveBtn = container.querySelector(".yaos-extension-resolve-btn");
       expect(resolveBtn?.getAttribute("aria-label")).toContain("Reopen");
+    });
+
+    it("calls onResolve with false when reopen button is clicked", async () => {
+      const threads: CommentThread[] = [
+        { comment: makeComment({ id: "c1", resolved: true }), replies: [] },
+      ];
+      const onResolve = vi.fn();
+      const renderer = createRenderer(threads, { onResolve });
+      await renderer.refresh(container, "test.md");
+
+      const reopenBtn = container.querySelector(".yaos-extension-resolve-btn") as HTMLElement;
+      reopenBtn.click();
+
+      expect(onResolve).toHaveBeenCalledWith("c1", false);
     });
 
     it("separates resolved threads with a divider", async () => {
