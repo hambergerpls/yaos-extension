@@ -33,6 +33,7 @@ declare global {
   interface HTMLElement {
     empty(): HTMLElement;
     addClass(cls: string): HTMLElement;
+    removeClass(cls: string): HTMLElement;
     createDiv(opts?: { cls?: string; text?: string }): HTMLDivElement;
     createSpan(opts?: { cls?: string; text?: string }): HTMLSpanElement;
     createEl<K extends keyof HTMLElementTagNameMap>(tag: K, opts?: { cls?: string; text?: string; attr?: Record<string, string> }): HTMLElementTagNameMap[K];
@@ -46,6 +47,11 @@ HTMLElement.prototype.empty = function(this: HTMLElement) {
 
 HTMLElement.prototype.addClass = function(this: HTMLElement, cls: string) {
   this.classList.add(cls);
+  return this;
+};
+
+HTMLElement.prototype.removeClass = function(this: HTMLElement, cls: string) {
+  this.classList.remove(cls);
   return this;
 };
 

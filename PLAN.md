@@ -1,130 +1,219 @@
-# Plan: Restructure Comment HTML to Follow Notion's Layout
+# Plan: Re-add Comment Sidebar with Shared Renderer
 
-## Summary of design decisions
+## Goal
+
+Re-add the comment sidebar panel (Obsidian `ItemView`) alongside the existing inline editor panel. Both views share Notion-style rendering via an extracted `CommentRenderer` class. A "Toggle comment sidebar" command opens/closes the sidebar.
+
+## Design decisions
 
 | Aspect | Decision |
 |--------|----------|
-| Avatars | 24px circles with author color bg + first initial |
-| Thread line | Yes — 1.5px vertical gray line connecting comments |
-| Action buttons | Hover-only toolbar with icon buttons (resolve checkmark, edit pencil, delete trash) |
-| Reply collapse | "Show N replies" button between original comment and replies |
-| Header | Always visible "Comments" header, content collapses |
-| Quote | Show selected text above comment body |
-| Actions layout | All as separate icon buttons in hover toolbar (no dropdown) |
-| Reply input | Keep CM6 embedded editor |
+| Sidebar vs inline | Both exist together — sidebar is an Obsidian right-panel ItemView, inline panel stays in-editor |
+| Layout style | Notion-style (avatars, thread lines, hover toolbars, smart collapse) — shared via `CommentRenderer` |
+| Add comment command | Keep current behavior (TODO: future floating anchored UI) |
+| Toggle command | Yes — "Toggle comment sidebar" command added |
+| Code sharing | Shared `CommentRenderer` class used by both views |
 
-## New HTML structure
+## Architecture
 
 ```
+CommentRenderer  (shared rendering + state logic)
+  ^         ^
+  |         |
+InlineCommentPanel    CommentView (ItemView)
+(in-editor panel)     (right sidebar)
+```
+
+### CommentRenderer — shared rendering logic
+
+Extracted from `InlineCommentPanel`. Owns all rendering state and DOM construction.
+
+Public API:
+```typescript
+class CommentRenderer {
+  constructor(store, app, callbacks)
+  async refresh(container: HTMLElement, filePath: string): Promise<void>
+  setPendingSelection(selection): void
+  getThreadCount(): number
+  destroy(): void
+}
+```
+
+Contains:
+- All rendering methods: `renderThreads()`, `renderThreadCard()`, `renderCommentItem()`, `renderReplyItems()`, `renderReplyInput()`, `renderInput()`, `renderCommentBody()`, `renderMentionsIntoFallback()`
+- All state: `threads`, `collapsedReplies`, `editingCommentId`/`editingReplyId`, `editors`/`replyEditors`, `renderComponents`, `renderGeneration`, `draftText`, `pendingSelection`, `currentFilePath`
+- Editor lifecycle: `destroyEditors()`, `destroyReplyEditors()`, `destroyRenderComponents()`
+- Helper: `formatRelativeTime()`
+
+### InlineCommentPanel — in-editor panel (refactored)
+
+Shrinks to ~60-80 lines. Keeps:
+- `attach(scroller)` / `detach()` — DOM injection lifecycle
+- `expanded` state + header toggle
+- Owns `panelEl`, `contentEl`, `scrollerEl`
+- Delegates to `renderer.refresh(contentEl, filePath)` when expanded
+- Calls `renderer.destroy()` on detach
+
+### CommentView — sidebar ItemView (new)
+
+```typescript
+export const COMMENTS_VIEW_TYPE = "yaos-extension-comments";
+
+export class CommentView extends ItemView {
+  private renderer: CommentRenderer;
+
+  getViewType()        → "yaos-extension-comments"
+  getDisplayText()     → "Comments"
+  getIcon()            → "message-square"
+
+  onOpen()             → register link click handler, initial render
+  onClose()            → renderer.destroy()
+  refresh(filePath)    → renderer.refresh(contentEl, filePath)
+  setPendingSelection(s) → renderer.setPendingSelection(s)
+  getThreads()         → renderer.getThreads()
+}
+```
+
+## HTML structure (shared by both views)
+
+```
+[container]                                    ← contentEl (sidebar) or .yaos-extension-inline-comment-content (inline)
+  .yaos-extension-comment-input                ← top-level comment input (CM6 editor)
+  .yaos-extension-comment-thread               ← each thread
+    .yaos-extension-thread-wrapper
+      .yaos-extension-comment-item             ← original comment
+        .yaos-extension-comment-item-row       ← avatar + name + timestamp
+        .yaos-extension-thread-line
+        .yaos-extension-comment-item-body
+          .yaos-extension-comment-quote
+          .yaos-extension-comment-body
+        .yaos-extension-comment-actions        ← hover toolbar
+      .yaos-extension-show-replies             ← "Show N replies" (only if > 3)
+      .yaos-extension-comment-replies          ← reply items
+      .yaos-extension-reply-input              ← always-visible reply editor
+  .yaos-extension-comment-resolved-divider
+  [resolved threads, same structure]
+```
+
+Inline panel wraps this in:
+```
 .yaos-extension-inline-comment-panel
-  .yaos-extension-inline-comment-header      ← always visible "Comments" row
-  .yaos-extension-inline-comment-content     ← collapsible
-    .yaos-extension-comment-input            ← top-level comment input (CM6 editor)
-    .yaos-extension-comment-thread           ← each thread
-      .yaos-extension-thread-wrapper         ← border-radius: 8px container
-        .yaos-extension-comment-item         ← original comment
-          .yaos-extension-comment-item-row   ← avatar + name + timestamp
-            .yaos-extension-avatar           ← 24px circle with initial
-            .yaos-extension-author-name
-            .yaos-extension-timestamp
-            .yaos-extension-edited-indicator (if edited)
-          .yaos-extension-thread-line        ← 1.5px vertical line (absolute)
-          .yaos-extension-comment-item-body  ← padded-left past avatar
-            .yaos-extension-comment-quote    ← selected text
-            .yaos-extension-comment-body     ← rendered markdown
-          .yaos-extension-comment-actions    ← hover toolbar (absolute, top-right)
-            resolve-btn (checkmark icon)
-            edit-btn (pencil icon)           ← only if own comment
-            delete-btn (trash icon)          ← only if own comment
-        .yaos-extension-show-replies         ← "Show N replies" button
-        .yaos-extension-comment-replies      ← expanded replies
-          .yaos-extension-comment-item       ← each reply (same structure)
-            .yaos-extension-comment-item-row
-            .yaos-extension-comment-item-body
-            .yaos-extension-comment-actions
-          .yaos-extension-reply-input        ← CM6 editor at bottom
-    .yaos-extension-comment-resolved-divider
-    [resolved threads, same structure]
+  .yaos-extension-inline-comment-header        ← collapsible header
+  .yaos-extension-inline-comment-content       ← collapse wrapper
+    [shared structure above]
+```
+
+Sidebar wraps it in:
+```
+.yaos-extension-comment-view                   ← sidebar padding
+  [shared structure above]
 ```
 
 ## Implementation tasks
 
-### 1. Update `inlineCommentPanel.ts` — DOM structure changes
+### 1. Extract `CommentRenderer` from `InlineCommentPanel`
 
-**`render()`** — Keep always-visible header, collapsible content. Header click still toggles content. No structural change needed.
+**New file**: `src/comments/commentRenderer.ts`
 
-**`renderThreadCard()`** — Complete rewrite:
-- Create `.yaos-extension-thread-wrapper` with `border-radius: 8px`
-- Create `.yaos-extension-comment-item` for original comment:
-  - Row with 24px avatar circle (bg = authorColor, text = first initial), author name, timestamp
-  - Thread line (absolute positioned 1.5px line)
-  - Body area padded left past avatar
-  - Quote block above body
-  - Hover toolbar with icon buttons (resolve, edit, delete)
-- No longer wrap everything in a clickable header — replies expand via "Show N replies" button
+Move all rendering logic out of `InlineCommentPanel`:
+- `renderThreads()`, `renderThreadCard()`, `renderCommentItem()`, `renderReplyItems()`, `renderReplyInput()`, `renderInput()`, `renderCommentBody()`, `renderMentionsIntoFallback()`, `formatRelativeTime()`
+- All state: `threads`, `collapsedReplies`, `editingCommentId`/`editingReplyId`, `editors`/`replyEditors`, `renderComponents`, `renderGeneration`, `draftText`, `pendingSelection`, `currentFilePath`
+- Editor lifecycle management (`destroyEditors()`, `destroyReplyEditors()`, etc.)
 
-**`renderReplies()`** — Render each reply as `.yaos-extension-comment-item` with same structure (avatar, name, timestamp, body, hover actions). Thread line continues through replies.
+### 2. Create `CommentRenderer` tests
 
-**Add `renderShowRepliesButton()`** — New method that renders "Show N replies" between original comment and expanded replies. Clicking it toggles reply visibility.
+**New file**: `src/comments/commentRenderer.test.ts`
 
-**Add `createAvatar(author, color)`** — Helper to create a 24px circle div with author's first initial.
+All rendering tests move here from `inlineCommentPanel.test.ts`:
+- Avatar rendering (initials, color)
+- Comment item row (author, timestamp, edited indicator)
+- Thread line
+- Comment body and quote
+- Hover action toolbar (resolve, edit, delete, ownership checks)
+- Show replies button (collapse/expand, >3 threshold)
+- Reply input (always visible, outside collapsible container)
+- Resolved threads (class, reopen button, divider)
+- CM6 editor integration
+- Draft preservation (same file vs different file)
+- Pending selection
 
-**Add `createActionBar(actions)`** — Helper to create the hover toolbar with icon buttons.
+### 3. Refactor `InlineCommentPanel` to delegate to `CommentRenderer`
 
-**Avatar helper**: Create a 24px div with `border-radius: 50%`, `background-color: authorColor`, centered white text with first character of author name.
+Shrink `InlineCommentPanel` to ~60-80 lines. Keeps:
+- `attach(scroller)` / `detach()` — DOM injection lifecycle
+- `expanded` state + header toggle
+- Owns `panelEl`, `contentEl`, `scrollerEl`
+- Calls `renderer.refresh(contentEl, filePath)` when expanded
+- Calls `renderer.destroy()` on detach
 
-**Action icons**: Use simple SVG icons inline (checkmark for resolve, pencil for edit, trash for delete). No external icon dependency.
+**Update** `inlineCommentPanel.test.ts` to only test inline-specific behavior: attach/detach, collapsible header, delegation.
 
-### 2. Update `styles.css` — New class styles
+### 4. Create `CommentView` sidebar
 
-**Replace** all existing `.yaos-extension-comment-*` styles with new Notion-inspired styles:
+**New file**: `src/comments/commentView.ts`
 
-- `.yaos-extension-inline-comment-panel` — keep padding
-- `.yaos-extension-inline-comment-header` — keep but remove border-bottom, add subtle bottom separator
-- `.yaos-extension-inline-comment-content` — keep collapse animation
-- `.yaos-extension-comment-thread` — remove border/card style, use spacing only
-- `.yaos-extension-thread-wrapper` — `border-radius: 8px`, hover bg change, transition
-- `.yaos-extension-comment-item` — `position: relative`, padding
-- `.yaos-extension-comment-item-row` — `display: flex`, `align-items: center`, `gap: 6px`
-- `.yaos-extension-avatar` — `24px × 24px`, `border-radius: 50%`, centered initial, `font-size: 12px`, `color: white`
-- `.yaos-extension-thread-line` — `position: absolute`, `width: 1.5px`, `background: var(--background-modifier-border)`, full height
-- `.yaos-extension-comment-item-body` — `padding-left: 32px` (past avatar)
-- `.yaos-extension-comment-actions` — `position: absolute`, `top: -4px`, `right: 0`, `opacity: 0`, `transition: opacity 150ms`, `background: var(--background-primary)`, `box-shadow`, `border-radius: 6px`, flex row
-- `.yaos-extension-comment-item:hover .yaos-extension-comment-actions` — `opacity: 1`
-- `.yaos-extension-show-replies` — styled as clickable text button, left-padded past avatar
-- Update `.yaos-extension-comment-quote` — subtle styling above body
-- Remove old button styles (`.yaos-extension-resolve-btn`, `.yaos-extension-delete-btn`, `.yaos-extension-edit-btn`) — replace with icon button styles
-- New icon button styles: small square buttons with SVG icons, hover bg
+- Extends `ItemView` with view type `"yaos-extension-comments"`
+- Internal `CommentRenderer` instance
+- `onOpen()` registers internal link click handler, initial render
+- `onClose()` destroys renderer
+- `refresh(filePath)` delegates to renderer
+- `setPendingSelection()` delegates to renderer
+- `getThreads()` returns current threads
 
-### 3. Update tests — `inlineCommentPanel.test.ts`
+**New file**: `src/comments/commentView.test.ts` — tests for:
+- ItemView lifecycle (open/close)
+- refresh renders threads into contentEl
+- Internal link click handler
+- setPendingSelection delegation
+- getThreads returns loaded threads
+- Editor cleanup on close
 
-Tests that need updating (CSS class / DOM structure changes):
-- "delete comment button" — now a hover toolbar icon, test for `.yaos-extension-delete-btn` still but structure changes
-- "delete reply button" — same
-- "resolve button" — same
-- "edit comment button" — same
-- "CM6 editor integration" — structure changes but still tests for `.cm-editor`
-- "edited indicator" — class stays the same, position in DOM changes
+### 5. Wire sidebar in `main.ts`
 
-The core behavior doesn't change — same callbacks, same conditions. Only the DOM queries and structure change. All existing tests should be updated to match new CSS class names and DOM nesting.
+Changes:
+- Import `CommentView`, `COMMENTS_VIEW_TYPE`
+- Add `registerView(COMMENTS_VIEW_TYPE, leaf => new CommentView(...))`
+- Add command: `{ id: "toggle-comment-sidebar", name: "Toggle comment sidebar" }` — opens/reveals or closes the sidebar
+- Update `refreshCommentView()` to refresh **both** inline panel and sidebar
+- Update `openFileAndComment()` to open sidebar when navigating from a notification
+- Update `onunload()` cleanup (sidebar views are cleaned up by Obsidian, but keep inline panel detach)
+- Update settings description text
 
-### 4. Update `AGENTS.md` — Architecture docs
+### 6. CSS updates
 
-Update the module description for `inlineCommentPanel.ts` to reflect Notion-style layout (avatars, thread lines, hover toolbars, "Show N replies").
+Add sidebar container style (Notion-style classes are already shared):
+```css
+.yaos-extension-comment-view {
+  padding: 12px;
+  font-size: var(--font-ui-small, 13px);
+}
+```
+
+### 7. Update docs
+
+Update `AGENTS.md` to reflect the three-module comment architecture.
 
 ## File change summary
 
-| File | Changes |
-|------|---------|
-| `src/comments/inlineCommentPanel.ts` | Major rewrite of `renderThreadCard`, `renderReplies`, add `createAvatar`, `createActionBar`, `renderShowRepliesButton`, update `renderInput` to include avatar |
-| `src/styles.css` | Replace all comment panel CSS with new Notion-style classes |
-| `src/comments/inlineCommentPanel.test.ts` | Update DOM queries to match new structure |
-| `src/AGENTS.md` | Update inlineCommentPanel description |
+| File | Action |
+|------|--------|
+| `src/comments/commentRenderer.ts` | **New** — shared rendering logic extracted from InlineCommentPanel |
+| `src/comments/commentRenderer.test.ts` | **New** — all rendering tests (~40 tests) |
+| `src/comments/commentView.ts` | **New** — sidebar ItemView using CommentRenderer |
+| `src/comments/commentView.test.ts` | **New** — sidebar-specific tests |
+| `src/comments/inlineCommentPanel.ts` | **Refactor** — shrink to ~60-80 lines, delegate to CommentRenderer |
+| `src/comments/inlineCommentPanel.test.ts` | **Refactor** — keep only attach/detach/header tests |
+| `src/main.ts` | **Update** — add sidebar registration, toggle command, dual refresh |
+| `src/styles.css` | **Update** — add `.yaos-extension-comment-view` |
+| `src/AGENTS.md` | **Update** — architecture docs |
+| `PLAN.md` | **Update** — this plan |
 
 ## Execution order
 
-1. Write new CSS styles first (so they exist when tests run)
-2. Rewrite `renderThreadCard` / `renderReplies` / add helpers in `inlineCommentPanel.ts`
-3. Update tests to match new DOM structure
-4. Run `npx vitest run` + `npm run build` to verify
-5. Update `AGENTS.md`
+1. Write `CommentRenderer` + tests (TDD) — extract from InlineCommentPanel
+2. Refactor `InlineCommentPanel` to use it + update inline tests
+3. Create `CommentView` + tests (TDD)
+4. Wire in `main.ts`
+5. CSS updates
+6. Verify: `npx vitest run` + `npm run build`
+7. Update `AGENTS.md`

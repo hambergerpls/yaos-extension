@@ -16,7 +16,9 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   +-- comments/
   |     +-- types.ts           (Comment, Reply, ResolveEntry, Deletion, Notification)
   |     +-- commentStore.ts    (CRUD operations on JSONL files)
-  |     +-- inlineCommentPanel.ts (DOM injection: Notion-style inline panel with avatars, thread lines, hover toolbar)
+  |     +-- commentRenderer.ts (Shared rendering: Notion-style threads, avatars, editors)
+  |     +-- inlineCommentPanel.ts (DOM injection: thin wrapper around CommentRenderer)
+  |     +-- commentView.ts     (Obsidian ItemView: sidebar wrapper around CommentRenderer)
   |     +-- commentCommands.ts (Command registration + context menu)
   |     +-- commentDecorations.ts (CM6 ViewPlugin for inline highlights)
   |     +-- embeddedEditor.ts  (Editor factory: full Obsidian editor with bare CM6 fallback)
@@ -45,7 +47,9 @@ Direct import relationships:
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
 | `comments/commentStore` | comments/types, obsidian (`Vault`) |
-| `comments/inlineCommentPanel` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (MarkdownRenderer, Component) |
+| `comments/commentRenderer` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (MarkdownRenderer, Component) |
+| `comments/inlineCommentPanel` | comments/commentRenderer |
+| `comments/commentView` | comments/commentRenderer, obsidian (`ItemView`, `App`) |
 | `comments/commentCommands` | obsidian APIs |
 | `comments/commentDecorations` | comments/types |
 | `comments/editorDiscovery` | obsidian (`App` only) |
@@ -70,10 +74,12 @@ together.
 4. Creates `CommentStore` and `NotificationStore`. The notification store is
    initialized with local read state from plugin data.
 5. If `showComments` is enabled:
-   - Creates an `InlineCommentPanel` instance
-   - Registers comment commands (Mod+Shift+M, context menu)
-   - Watches `.yaos-extension/comments/` for vault changes
-   - Watches `active-leaf-change` to attach/refresh the inline panel
+    - Creates an `InlineCommentPanel` instance
+    - Registers the `"yaos-extension-comments"` view (sidebar)
+    - Registers the "Toggle comment sidebar" command
+    - Registers comment commands (Mod+Shift+M, context menu)
+    - Watches `.yaos-extension/comments/` for vault changes
+    - Watches `active-leaf-change` to attach/refresh the inline panel
 6. If `showNotifications` is enabled:
    - Registers the `"yaos-extension-notifications"` view
    - Registers the "Open notifications" command
@@ -121,6 +127,10 @@ main.ts :: setPendingSelection + attachInlinePanel + refreshCommentView
   |
   v
 InlineCommentPanel (injected in editor .cm-scroller, CM6 editor with selection quoted)
+  |                     |
+  | delegates to        | also refreshes
+  v                     v
+CommentRenderer     CommentView (right sidebar ItemView)
   |
   | user types comment, clicks "Comment" or presses Enter
   v
@@ -129,12 +139,12 @@ main.ts :: handleAddComment(text)
   | extracts mentions via CommentStore.extractMentions(text)
   | writes comment to JSONL via commentStore.addComment()
   | generates mention notifications via notificationHelpers
-  | refreshes inline panel
+  | refreshes both inline panel and sidebar
   v
-InlineCommentPanel :: refresh(filePath)
+CommentRenderer :: refresh(container, filePath)
   |
   | reads threads from commentStore.getThreadsForFile()
-  | renders collapsible header + thread cards with expand/collapse, reply, resolve, delete
+  | renders thread cards with expand/collapse, reply, resolve, delete
   | editorMentionExtension provides @autocomplete in embedded CM6 editors
 ```
 
@@ -268,26 +278,40 @@ Key methods:
 - `resolveComment` -- append resolve entry
 - `extractMentions(text)` -- static, parses `@Name` patterns
 
-### comments/inlineCommentPanel.ts -- Inline panel in editor (Notion-style)
+### comments/commentRenderer.ts -- Shared Notion-style rendering
+
+Extracted rendering logic shared by both `InlineCommentPanel` and `CommentView`.
+Owns all rendering state and DOM construction.
+
+Public API:
+- `refresh(container, filePath)` -- loads threads and renders into container
+- `loadThreads(filePath)` -- loads threads without rendering (for header count)
+- `render(container)` -- renders current threads into container
+- `setPendingSelection(selection)` -- queues selection text for next render
+- `getThreadCount()` -- returns loaded thread count
+- `getThreads()` -- returns loaded threads
+- `destroy()` -- cleans up CM6 editors and render components
+
+Contains all rendering methods: `renderAll`, `renderThreads`, `renderThreadCard`,
+`renderCommentItem`, `renderReplyItems`, `renderReplyInput`, `renderInput`,
+`renderCommentBody`, `renderMentionsIntoFallback`, `formatRelativeTime`.
+
+Manages: `editors`, `replyEditors`, `renderComponents`, `collapsedReplies`,
+`editingCommentId`/`editingReplyId`, `draftText`, `pendingSelection`,
+`currentFilePath`, `renderGeneration`.
+
+Constructor: `new CommentRenderer(store, app, callbacks?)`.
+
+### comments/inlineCommentPanel.ts -- Inline panel in editor (thin wrapper)
 
 DOM-injected panel that appears inline in the editor's `.cm-scroller` (source mode
-only), inserted before `.cm-contentContainer` inside `.cm-sizer`. Follows Notion's
-comment UI layout with:
+only), inserted before `.cm-contentContainer` inside `.cm-sizer`. Delegates all
+rendering to `CommentRenderer`.
 
-- **Always-visible "Comments (N)" header** — clicks toggle content expansion
-- **24px circular avatars** with author color background and first initial
-- **Vertical thread line** (1.5px) connecting original comment to replies
-- **Hover-only action toolbar** — resolve (checkmark), edit (pencil), delete (trash)
-  as SVG icon buttons, visible only on comment hover
-- **"Show N replies" button** — collapses/expands reply thread per-thread
-- **Comment items** — avatar + author name + timestamp row, body padded left past avatar
-- **Quote block** — selected text shown above comment body
-- **Resolved threads** — shown with reduced opacity, separated by divider
-
-Uses embedded CM6 editors (via `embeddedEditor.ts`) for comment and reply input, with
-`editorMentionExtension` for @mention autocomplete. Mention rendering uses DOM-safe
-`renderMentionsIntoFallback()` with `createTextNode`. Edit mode replaces body with
-inline CM6 editor.
+Retains only:
+- `attach(scroller)` / `detach()` — DOM injection lifecycle
+- `expanded` state + collapsible "Comments (N)" header toggle
+- Own `contentEl` shown/hidden based on expansion state
 
 Public API:
 - `attach(scroller)` -- injects panel DOM before `.cm-contentContainer`
@@ -295,12 +319,22 @@ Public API:
 - `refresh(filePath)` -- loads threads and re-renders
 - `setPendingSelection(selection)` -- queues selection text for next render
 
-Constructor receives callbacks: `onAddComment`, `onAddReply`, `onResolve`,
-`onDelete`, `onDeleteReply`, `onEditComment`, `onEditReply`, `getPeers`.
+### comments/commentView.ts -- Sidebar panel (thin wrapper)
 
-Internal state tracks `expandedReplies` (Set of comment IDs with expanded replies),
-`editingCommentId`/`editingReplyId` for inline edit mode, `expanded` for panel
-content toggle, and `draftText` for preserving input across refreshes.
+Obsidian `ItemView` with view type `"yaos-extension-comments"`. Delegates all
+rendering to `CommentRenderer`. Appears in the right sidebar.
+
+Public API:
+- `getViewType()` → `"yaos-extension-comments"`
+- `getDisplayText()` → `"Comments"`
+- `getIcon()` → `"message-square"`
+- `onOpen()` -- registers internal link click handler
+- `onClose()` -- destroys renderer
+- `refresh(filePath)` -- loads threads and renders into contentEl
+- `setPendingSelection(selection)` -- queues selection text
+- `getThreads()` -- returns loaded threads
+
+Constructor: `new CommentView(leaf, store, app, callbacks?)`.
 
 ### comments/embeddedEditor.ts -- Editor factory (Obsidian + fallback)
 
@@ -400,12 +434,14 @@ Four independent concerns:
    connection dots, peer dots, floating tooltip, and notification badge. Uses
    Obsidian CSS variables for theme compatibility.
 
- 3. **Comment inline panel (Notion-style)**: Styles for 24px circular avatars with
-    initials, vertical thread lines, hover-only action toolbars (SVG icon buttons),
-    "Show N replies" collapse buttons, thread wrapper hover backgrounds, quote blocks,
-    reply input, expand/collapse animations, edit mode, and @mention highlighting.
+ 3. **Comment panel (Notion-style)**: Shared styles for both inline and sidebar
+    views — 24px circular avatars with initials, vertical thread lines, hover-only
+    action toolbars (SVG icon buttons), "Show N replies" collapse buttons, thread
+    wrapper hover backgrounds, quote blocks, reply input, expand/collapse animations,
+    edit mode, and @mention highlighting. Sidebar has its own padding via
+    `.yaos-extension-comment-view`.
 
-4. **Notification panel + mention dropdown**: Styles for notification cards,
+ 4. **Notification panel + mention dropdown**: Styles for notification cards,
    unread indicators, kind icons, the mention autocomplete dropdown with
    peer color dots.
 
@@ -437,7 +473,8 @@ flow for immediate visual feedback when toggling peer dots.
 - **Callback-based wiring**. The tracker takes a plain callback function, not an
   event emitter or observable. `main.ts` passes closures that bridge outputs
   to the appropriate views and stores.
-- **Views never import each other**. `InlineCommentPanel` and `NotificationView` are
-  siblings. All communication goes through `main.ts`.
+- **Views never import each other**. `InlineCommentPanel`, `CommentView`, and
+  `NotificationView` are siblings. All communication goes through `main.ts`.
+  Both `InlineCommentPanel` and `CommentView` delegate to `CommentRenderer`.
 - **Comment/notification stores are siblings**. They never import each other.
   `main.ts` coordinates notification generation after comment operations.

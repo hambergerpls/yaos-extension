@@ -16,6 +16,7 @@ import { DeviceStore } from "./deviceStore";
 import type { DeviceRegistry } from "./deviceStore";
 import { log } from "./logger";
 import { editorMentionExtension } from "./mentions/editorMentionPlugin";
+import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { resetEditorDiscovery } from "./comments/editorDiscovery";
 
 export default class YaosExtensionPlugin extends Plugin {
@@ -75,6 +76,33 @@ export default class YaosExtensionPlugin extends Plugin {
         getPeers: () => {
           return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
         },
+      });
+
+      this.registerView(COMMENTS_VIEW_TYPE, (leaf) => {
+        return new CommentView(
+          leaf,
+          this.commentStore!,
+          this.app,
+          {
+            localDeviceName: getLocalDeviceName(this.app),
+            onAddComment: (text: string) => this.handleAddComment(text),
+            onAddReply: (commentId: string, text: string) => this.handleAddReply(commentId, text),
+            onResolve: (commentId: string, resolved: boolean) => this.handleResolve(commentId, resolved),
+            onDelete: (targetId: string) => this.handleDelete(targetId),
+            onDeleteReply: (targetId: string) => this.handleDelete(targetId),
+            onEditComment: (commentId: string, newText: string) => this.handleEditComment(commentId, newText),
+            onEditReply: (replyId: string, newText: string) => this.handleEditReply(replyId, newText),
+            getPeers: () => {
+              return getAllKnownDevices(this.app, this.tracker?.currentAwareness ?? null, this.deviceRegistry);
+            },
+          },
+        );
+      });
+
+      this.addCommand({
+        id: "toggle-comment-sidebar",
+        name: "Toggle comment sidebar",
+        callback: () => this.toggleCommentSidebar(),
       });
 
       registerCommentCommands(this, this.commentStore, this.getDeviceInfo.bind(this), () => {
@@ -258,9 +286,36 @@ export default class YaosExtensionPlugin extends Plugin {
 
   private async refreshCommentView(): Promise<void> {
     const filePath = this.getActiveFilePath();
-    if (!filePath || !this.inlinePanel) return;
+    if (!filePath) return;
 
-    await this.inlinePanel.refresh(filePath);
+    if (this.inlinePanel) {
+      await this.inlinePanel.refresh(filePath);
+    }
+
+    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof CommentView) {
+        await leaf.view.refresh(filePath);
+      }
+    }
+  }
+
+  private async toggleCommentSidebar(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    if (existing.length > 0) {
+      existing.forEach(leaf => leaf.detach());
+      return;
+    }
+
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: COMMENTS_VIEW_TYPE, active: true });
+      this.app.workspace.revealLeaf(leaf);
+      const filePath = this.getActiveFilePath();
+      if (filePath && leaf.view instanceof CommentView) {
+        await leaf.view.refresh(filePath);
+      }
+    }
   }
 
   private async openNotificationsView(): Promise<void> {
