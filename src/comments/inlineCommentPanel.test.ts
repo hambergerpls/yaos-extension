@@ -11,7 +11,6 @@ function makeStore(threads: CommentThread[]) {
 
 function makeComment(overrides: Partial<Comment> = {}): Comment {
   return {
-    type: "comment",
     id: "comment-1",
     text: "This looks good",
     author: "Alice",

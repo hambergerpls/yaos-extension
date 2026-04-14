@@ -1,5 +1,4 @@
 export interface Comment {
-  type: "comment";
   id: string;
   text: string;
   author: string;
@@ -15,7 +14,6 @@ export interface Comment {
 }
 
 export interface Reply {
-  type: "reply";
   id: string;
   commentId: string;
   text: string;
@@ -25,32 +23,6 @@ export interface Reply {
   mentions: string[];
   editedAt?: number;
 }
-
-export interface EditEntry {
-  type: "edit";
-  targetId: string;
-  newText: string;
-  editedBy: string;
-  editedAt: number;
-  mentions: string[];
-}
-
-export interface ResolveEntry {
-  type: "resolve";
-  commentId: string;
-  resolved: boolean;
-  by: string;
-  at: number;
-}
-
-export interface Deletion {
-  type: "delete";
-  targetId: string;
-  deletedBy: string;
-  deletedAt: number;
-}
-
-export type CommentEntry = Comment | Reply | ResolveEntry | Deletion | EditEntry;
 
 export interface CommentThread {
   comment: Comment;

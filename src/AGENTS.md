@@ -14,8 +14,8 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   +-- statusBar.ts             (view: pure DOM rendering + notification badge)
   |
   +-- comments/
-  |     +-- types.ts           (Comment, Reply, ResolveEntry, Deletion, Notification)
-  |     +-- commentStore.ts    (CRUD operations on JSONL files)
+  |     +-- types.ts           (Comment, Reply, CommentThread)
+  |     +-- commentStore.ts    (CRUD operations on document YAML frontmatter)
   |     +-- commentRenderer.ts (Shared rendering: Notion-style threads, avatars, editors)
   |     +-- inlineCommentPanel.ts (DOM injection: thin wrapper around CommentRenderer)
   |     +-- commentView.ts     (Obsidian ItemView: sidebar wrapper around CommentRenderer)
@@ -46,7 +46,7 @@ Direct import relationships:
 | `yaosApi`          | obsidian (`App` only)               |
 | `settings`         | nothing                             |
 | `comments/types`   | nothing                             |
-| `comments/commentStore` | comments/types, obsidian (`Vault`) |
+| `comments/commentStore` | comments/types, obsidian (`App`), ../logger |
 | `comments/commentRenderer` | comments/commentStore, comments/embeddedEditor, mentions/editorMentionPlugin, yaosApi (types), obsidian (MarkdownRenderer, Component) |
 | `comments/inlineCommentPanel` | comments/commentRenderer |
 | `comments/commentView` | comments/commentRenderer, obsidian (`ItemView`, `App`) |
@@ -72,13 +72,15 @@ together.
 3. Creates a status bar element via `this.addStatusBarItem()` and wraps it in
    a `PresenceStatusBar` instance. Hides the element if settings say so.
 4. Creates `CommentStore` and `NotificationStore`. The notification store is
-   initialized with local read state from plugin data.
+   initialized with local read state from plugin data. CommentStore uses
+   `app.fileManager.processFrontMatter` and `app.metadataCache` for YAML
+   frontmatter read/write — no folder setup needed.
 5. If `showComments` is enabled:
     - Creates an `InlineCommentPanel` instance
     - Registers the `"yaos-extension-comments"` view (sidebar)
     - Registers the "Toggle comment sidebar" command
     - Registers comment commands (Mod+Shift+M, context menu)
-    - Watches `.yaos-extension/comments/` for vault changes
+    - Watches the active file for vault modify events to refresh comments
     - Watches `active-leaf-change` to attach/refresh the inline panel
 6. If `showNotifications` is enabled:
    - Registers the `"yaos-extension-notifications"` view
@@ -137,7 +139,7 @@ CommentRenderer     CommentView (right sidebar ItemView)
 main.ts :: handleAddComment(text)
   |
   | extracts mentions via CommentStore.extractMentions(text)
-  | writes comment to JSONL via commentStore.addComment()
+  | writes comment to frontmatter via commentStore.addComment()
   | generates mention notifications via notificationHelpers
   | refreshes both inline panel and sidebar
   v
@@ -262,21 +264,29 @@ Constructor: `new PresenceStatusBar(el, settings, onBadgeClick?)`
 
 ### comments/types.ts -- Shared type definitions
 
-Exports: `Comment`, `Reply`, `ResolveEntry`, `Deletion`, `Notification`,
-`CommentEntry` (union), `CommentThread`. Pure data, no logic.
+Exports: `Comment`, `Reply`, `CommentThread`. Pure data, no logic.
 
-### comments/commentStore.ts -- JSONL persistence
+### comments/commentStore.ts -- YAML frontmatter persistence
 
-CRUD operations on per-file JSONL in `.yaos-extension/comments/`. Path encoding
-uses `%2F` for `/` in vault-relative paths. Soft-deletes via `Deletion` entries.
-`ResolveEntry` overrides comment's resolved state (last-writer-wins by timestamp).
+Reads/writes a `yaos-comments` map in each document's YAML frontmatter.
+Comment IDs are `String(Date.now())` timestamps used as YAML map keys.
+Insertion order in the YAML map determines display order (not sorted by offset).
+Hard deletes remove the key from the map. Resolves flip the boolean directly.
+Edits overwrite `text`/`mentions` and set `editedAt`. No audit trail.
+
+Uses `app.fileManager.processFrontMatter(file, fn)` for atomic writes and
+`app.metadataCache.getFileCache(file)?.frontmatter` for reads.
 
 Key methods:
-- `getThreadsForFile(filePath)` -- parses JSONL, applies deletes/resolves, groups replies
-- `addComment/addReply` -- append JSON lines
-- `deleteEntry` -- append soft-delete entry
-- `resolveComment` -- append resolve entry
+- `getThreadsForFile(filePath)` -- reads frontmatter, builds CommentThread[]
+- `addComment(filePath, comment)` -- writes comment to frontmatter
+- `addReply(filePath, reply)` -- writes reply to comment's replies sub-map
+- `deleteEntry(filePath, targetId)` -- hard deletes comment or reply from map
+- `resolveComment(filePath, commentId, resolved)` -- flips resolved boolean
+- `editEntry(filePath, targetId, newText)` -- overwrites text, mentions, editedAt
 - `extractMentions(text)` -- static, parses `@Name` patterns
+
+Constructor: `new CommentStore(app: App)`.
 
 ### comments/commentRenderer.ts -- Shared Notion-style rendering
 

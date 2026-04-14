@@ -29,7 +29,6 @@ function makeStore(threads: CommentThread[]) {
 
 function makeComment(overrides: Partial<Comment> = {}): Comment {
   return {
-    type: "comment",
     id: "comment-1",
     text: "This looks good",
     author: "Alice",
@@ -47,7 +46,6 @@ function makeComment(overrides: Partial<Comment> = {}): Comment {
 
 function makeReply(overrides: Partial<Reply> = {}): Reply {
   return {
-    type: "reply",
     id: "reply-1",
     commentId: "comment-1",
     text: "I agree",

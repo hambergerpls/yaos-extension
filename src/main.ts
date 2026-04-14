@@ -44,8 +44,7 @@ export default class YaosExtensionPlugin extends Plugin {
       this.statusBarEl.style.display = "none";
     }
 
-    this.commentStore = new CommentStore(this.app.vault);
-    await this.commentStore.ensureFolder();
+    this.commentStore = new CommentStore(this.app);
 
     this.notificationStore = new NotificationStore(
       this.app.vault,
@@ -117,7 +116,8 @@ export default class YaosExtensionPlugin extends Plugin {
 
       this.registerEvent(
         this.app.vault.on("modify", (file) => {
-          if (file.path.startsWith(".yaos-extension/comments/")) {
+          const activePath = this.getActiveFilePath();
+          if (activePath && file.path === activePath) {
             this.refreshCommentView();
           }
         }),
@@ -386,9 +386,8 @@ export default class YaosExtensionPlugin extends Plugin {
       }
     }
 
-    const commentId = crypto.randomUUID();
+    const commentId = String(Date.now());
     await this.commentStore.addComment(filePath, {
-      type: "comment",
       id: commentId,
       text,
       author: deviceInfo.name,
@@ -414,9 +413,8 @@ export default class YaosExtensionPlugin extends Plugin {
     const mentions = CommentStore.extractMentions(text);
     log("handleAddReply: commentId=%s text=%s mentions=%o author=%s", commentId, JSON.stringify(text), mentions, deviceInfo.name);
 
-    const replyId = crypto.randomUUID();
+    const replyId = String(Date.now());
     await this.commentStore.addReply(filePath, {
-      type: "reply",
       id: replyId,
       commentId,
       text,
@@ -435,7 +433,7 @@ export default class YaosExtensionPlugin extends Plugin {
     if (!filePath || !this.commentStore) return;
 
     const deviceInfo = this.getDeviceInfo();
-    await this.commentStore.resolveComment(filePath, commentId, resolved, deviceInfo.name);
+    await this.commentStore.resolveComment(filePath, commentId, resolved);
     await this.refreshCommentView();
   }
 
@@ -451,7 +449,7 @@ export default class YaosExtensionPlugin extends Plugin {
     );
     if (!isOwner) return;
 
-    await this.commentStore.deleteEntry(filePath, targetId, deviceInfo.name);
+    await this.commentStore.deleteEntry(filePath, targetId);
     await this.refreshCommentView();
   }
 
@@ -465,7 +463,7 @@ export default class YaosExtensionPlugin extends Plugin {
     if (!thread || thread.comment.author !== deviceInfo.name) return;
 
     const originalMentions = thread.comment.mentions;
-    await this.commentStore.editEntry(filePath, commentId, newText, deviceInfo.name);
+    await this.commentStore.editEntry(filePath, commentId, newText);
 
     const newMentions = CommentStore.extractMentions(newText);
     const addedMentions = newMentions.filter(m => !originalMentions.includes(m));
@@ -493,7 +491,7 @@ export default class YaosExtensionPlugin extends Plugin {
     }
     if (!commentId) return;
 
-    await this.commentStore.editEntry(filePath, replyId, newText, deviceInfo.name);
+    await this.commentStore.editEntry(filePath, replyId, newText);
 
     const newMentions = CommentStore.extractMentions(newText);
     const addedMentions = newMentions.filter(m => !originalMentions.includes(m));
