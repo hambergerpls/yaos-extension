@@ -303,7 +303,7 @@ export class CommentRenderer {
       const resolveBtn = actions.createEl("button", {
         cls: "clickable-icon yaos-extension-resolve-btn",
       });
-      setIcon(resolveBtn, "check");
+      setIcon(resolveBtn, isResolved ? "rotate-ccw" : "check");
       resolveBtn.setAttribute("aria-label", isResolved ? "Reopen" : "Resolve");
       resolveBtn.title = isResolved ? "Reopen" : "Resolve";
       resolveBtn.addEventListener("click", (e) => {
