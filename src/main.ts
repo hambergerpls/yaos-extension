@@ -115,7 +115,7 @@ export default class YaosExtensionPlugin extends Plugin {
       });
 
       this.registerEvent(
-        this.app.vault.on("modify", (file) => {
+        this.app.metadataCache.on("changed", (file) => {
           const activePath = this.getActiveFilePath();
           if (activePath && file.path === activePath) {
             this.refreshCommentView();
