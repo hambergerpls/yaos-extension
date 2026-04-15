@@ -4,6 +4,11 @@ export interface YaosExtensionSettings {
   showPeerDotsInStatusBar: boolean;
   showComments: boolean;
   showNotifications: boolean;
+  showEditHistory: boolean;
+  editHistoryRetentionDays: number;
+  editHistoryMaxPerFilePerDay: number;
+  editHistoryDebounceMs: number;
+  editHistoryRebaseInterval: number;
 }
 
 export const DEFAULT_SETTINGS: YaosExtensionSettings = {
@@ -12,4 +17,9 @@ export const DEFAULT_SETTINGS: YaosExtensionSettings = {
   showPeerDotsInStatusBar: true,
   showComments: true,
   showNotifications: true,
+  showEditHistory: true,
+  editHistoryRetentionDays: 30,
+  editHistoryMaxPerFilePerDay: 50,
+  editHistoryDebounceMs: 30000,
+  editHistoryRebaseInterval: 10,
 };

@@ -1,6 +1,6 @@
 # YAOS Extension
 
-An [Obsidian](https://obsidian.md) plugin that extends [YAOS](https://github.com/nergal-perm/obsidian-yaos) (Yet Another Obsidian Sync) with collaborative presence features — without forking YAOS.
+An [Obsidian](https://obsidian.md) plugin that extends [YAOS](https://github.com/kavinsood/yaos) with collaborative presence features — without forking YAOS.
 
 ## Features
 

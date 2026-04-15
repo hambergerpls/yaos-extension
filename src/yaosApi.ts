@@ -109,6 +109,46 @@ export function getLocalDeviceName(app: App): string {
   return settings?.deviceName || "Unknown";
 }
 
+export interface VaultSyncLike {
+  ydoc: unknown;
+  provider: unknown;
+  awareness: unknown;
+  idToText: unknown;
+  meta: unknown;
+  getFileId(path: string): string | undefined;
+}
+
+export function getYDoc(app: App): unknown | null {
+  const plugin = getYaosPlugin(app);
+  if (!plugin) return null;
+  const vaultSync = (plugin as any)?.vaultSync;
+  if (!vaultSync) return null;
+  return vaultSync.ydoc ?? null;
+}
+
+export function getVaultSync(app: App): VaultSyncLike | null {
+  const plugin = getYaosPlugin(app);
+  if (!plugin) return null;
+  const vaultSync = (plugin as any)?.vaultSync;
+  if (!vaultSync) return null;
+  return vaultSync as VaultSyncLike;
+}
+
+export function getFileId(app: App, path: string): string | undefined {
+  const vaultSync = getVaultSync(app);
+  if (!vaultSync || typeof vaultSync.getFileId !== "function") return undefined;
+  return vaultSync.getFileId(path);
+}
+
+export function getFilePath(app: App, fileId: string): string | undefined {
+  const vaultSync = getVaultSync(app);
+  if (!vaultSync?.meta) return undefined;
+  const meta = vaultSync.meta as any;
+  if (typeof meta.get !== "function") return undefined;
+  const entry = meta.get(fileId);
+  return entry?.path;
+}
+
 export function getAllKnownDevices(
   app: App,
   awareness: AwarenessLike | null,

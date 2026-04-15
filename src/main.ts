@@ -5,7 +5,7 @@ import {
 } from "./settings";
 import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
-import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
+import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, getYDoc, getVaultSync, getFileId, getFilePath, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
 import { CommentStore } from "./comments/commentStore";
 import { InlineCommentPanel } from "./comments/inlineCommentPanel";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
@@ -18,6 +18,10 @@ import { log } from "./logger";
 import { editorMentionExtension } from "./mentions/editorMentionPlugin";
 import { CommentView, COMMENTS_VIEW_TYPE } from "./comments/commentView";
 import { resetEditorDiscovery } from "./comments/editorDiscovery";
+import { EditHistoryStore } from "./editHistory/editHistoryStore";
+import { EditHistoryCapture } from "./editHistory/editHistoryCapture";
+import { EditHistoryView, EDIT_HISTORY_VIEW_TYPE } from "./editHistory/editHistoryView";
+import { PendingEditsDb } from "./editHistory/pendingEditsDb";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -29,6 +33,9 @@ export default class YaosExtensionPlugin extends Plugin {
   deviceStore: DeviceStore | null = null;
   deviceRegistry: DeviceRegistry = {};
   inlinePanel: InlineCommentPanel | null = null;
+  editHistoryStore: EditHistoryStore | null = null;
+  editHistoryCapture: EditHistoryCapture | null = null;
+  pendingEditsDb: PendingEditsDb | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -164,6 +171,70 @@ export default class YaosExtensionPlugin extends Plugin {
       }),
     );
 
+    if (this.settings.showEditHistory) {
+      this.editHistoryStore = new EditHistoryStore(this.app.vault);
+
+      this.registerView(EDIT_HISTORY_VIEW_TYPE, (leaf) => {
+        return new EditHistoryView(
+          leaf,
+          this.editHistoryStore!,
+          (content: string) => this.handleRestoreVersion(content),
+        );
+      });
+
+      this.addCommand({
+        id: "open-edit-history",
+        name: "Open edit history",
+        callback: () => this.openEditHistoryView(),
+      });
+
+      this.registerEvent(
+        this.app.workspace.on("active-leaf-change", () => {
+          this.refreshEditHistoryView();
+        }),
+      );
+
+      if (isYaosAvailable(this.app)) {
+        const vaultSync = getVaultSync(this.app);
+        const ydoc = getYDoc(this.app);
+        if (vaultSync && ydoc) {
+          try {
+            const pendingDb = new PendingEditsDb("yaos-ext:edit-history-pending");
+            await pendingDb.open();
+            this.pendingEditsDb = pendingDb;
+
+            this.editHistoryCapture = new EditHistoryCapture(
+              this.editHistoryStore,
+              () => getLocalDeviceName(this.app),
+              {
+                rebaseInterval: this.settings.editHistoryRebaseInterval,
+                maxPerFilePerDay: this.settings.editHistoryMaxPerFilePerDay,
+                debounceMs: this.settings.editHistoryDebounceMs,
+              },
+              1_000_000,
+              pendingDb,
+            );
+
+            await this.editHistoryCapture.recoverOrphans();
+
+            this.editHistoryCapture.start(
+              ydoc,
+              (vaultSync as any).idToText,
+              (fileId: string) => getFilePath(this.app, fileId),
+              (fileId: string) => {
+                const idToText = (vaultSync as any).idToText;
+                if (!idToText) return null;
+                const yText = idToText.get(fileId);
+                return yText ?? null;
+              },
+            );
+          } catch (e) {
+            log("editHistory: failed to open IndexedDB, edit history capture disabled", e);
+          }
+        }
+      }
+    }
+
     if (!isYaosAvailable(this.app)) {
       this.statusBar.update([], false, "");
       new Notice("YAOS Extension: YAOS plugin not found. Please install and enable YAOS first.");
@@ -201,8 +272,11 @@ export default class YaosExtensionPlugin extends Plugin {
     );
   }
 
-  onunload() {
+  async onunload() {
     this.inlinePanel?.detach();
+    await this.editHistoryCapture?.flush();
+    this.editHistoryCapture?.stop();
+    this.pendingEditsDb?.close();
     this.tracker?.stop();
     this.statusBar?.destroy();
     resetEditorDiscovery();
@@ -339,6 +413,47 @@ export default class YaosExtensionPlugin extends Plugin {
 
     this.attachInlinePanel();
     await this.refreshCommentView();
+  }
+
+  private async openEditHistoryView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(EDIT_HISTORY_VIEW_TYPE);
+    if (existing.length > 0) {
+      this.app.workspace.revealLeaf(existing[0]!);
+      return;
+    }
+
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: EDIT_HISTORY_VIEW_TYPE, active: true });
+      this.app.workspace.revealLeaf(leaf);
+      this.refreshEditHistoryView();
+    }
+  }
+
+  private async refreshEditHistoryView(): Promise<void> {
+    const leaves = this.app.workspace.getLeavesOfType(EDIT_HISTORY_VIEW_TYPE);
+    if (leaves.length === 0) return;
+
+    const activePath = this.getActiveFilePath();
+    let fileId: string | null = null;
+    if (activePath) {
+      fileId = getFileId(this.app, activePath) ?? null;
+    }
+
+    for (const leaf of leaves) {
+      if (leaf.view instanceof EditHistoryView) {
+        await leaf.view.refresh(fileId);
+      }
+    }
+  }
+
+  private async handleRestoreVersion(content: string): Promise<void> {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!activeView) return;
+    const editor = activeView.editor;
+    const lastLine = editor.lastLine();
+    const lastCh = editor.getLine(lastLine).length;
+    editor.replaceRange(content, { line: 0, ch: 0 }, { line: lastLine, ch: lastCh });
   }
 
   private async refreshNotifications(): Promise<void> {
@@ -712,5 +827,78 @@ class YaosExtensionSettingTab extends PluginSettingTab {
             new Notice("Reload the plugin for this change to take effect.");
           })
       );
+
+    new Setting(containerEl)
+      .setName("Show edit history")
+      .setDesc(
+        "Enable the edit history sidebar showing a timeline of file edits with device attribution."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showEditHistory)
+          .onChange(async (value) => {
+            this.plugin.settings.showEditHistory = value;
+            await this.plugin.saveSettings();
+            new Notice("Reload the plugin for this change to take effect.");
+          })
+      );
+
+    if (this.plugin.settings.showEditHistory) {
+      new Setting(containerEl)
+        .setName("Edit history retention (days)")
+        .setDesc("Number of days to keep edit history snapshots.")
+        .addSlider((slider) =>
+          slider
+            .setLimits(7, 90, 1)
+            .setValue(this.plugin.settings.editHistoryRetentionDays)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.editHistoryRetentionDays = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Max snapshots per file per day")
+        .setDesc("Maximum number of snapshots captured per file per day.")
+        .addSlider((slider) =>
+          slider
+            .setLimits(10, 200, 10)
+            .setValue(this.plugin.settings.editHistoryMaxPerFilePerDay)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.editHistoryMaxPerFilePerDay = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Edit capture debounce (seconds)")
+        .setDesc("Idle time in seconds before capturing an edit snapshot.")
+        .addSlider((slider) =>
+          slider
+            .setLimits(5, 120, 5)
+            .setValue(this.plugin.settings.editHistoryDebounceMs / 1000)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.editHistoryDebounceMs = value * 1000;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName("Rebase interval")
+        .setDesc("Number of delta versions between full-content base snapshots.")
+        .addSlider((slider) =>
+          slider
+            .setLimits(5, 50, 1)
+            .setValue(this.plugin.settings.editHistoryRebaseInterval)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.editHistoryRebaseInterval = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
   }
 }
