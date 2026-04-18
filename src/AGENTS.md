@@ -324,6 +324,12 @@ Manages: `editors`, `replyEditors`, `renderComponents`, `collapsedReplies`,
 `editingCommentId`/`editingReplyId`, `draftText`, `pendingSelection`,
 `currentFilePath`, `renderGeneration`.
 
+Serializes concurrent `refresh()` calls via `renderGeneration` — the
+counter is bumped at the start of `refresh()` *before* awaiting
+`store.getThreadsForFile()`, so stale refreshes are dropped before they
+mutate `this.threads` or touch the DOM. The counter is also re-bumped
+inside `renderAll` to gate async `MarkdownRenderer.render` completions.
+
 Constructor: `new CommentRenderer(store, app, callbacks?)`.
 
 ### comments/inlineCommentPanel.ts -- Inline panel in editor (thin wrapper)
@@ -425,7 +431,9 @@ Constructor: `new NotificationStore(vault, loadData, saveData)`.
 Obsidian `ItemView` with view type `"yaos-extension-notifications"`. Renders
 notification cards sorted by `createdAt` descending, with unread indicators,
 kind icons, from-device info, preview text, and file name. Click marks as read
-and navigates to the source file + comment thread.
+and navigates to the source file + comment thread. Uses a `refreshGeneration`
+counter to drop stale concurrent refreshes before they mutate
+`this.notifications` or touch the DOM.
 
 Constructor: `new NotificationView(leaf, store, deviceName, onOpenFile)`.
 
@@ -523,6 +531,10 @@ expand. Expanded-state persists across `refresh()` calls via the
 instance field `expandedSessions: Set<string>` keyed by
 `${device}-${startTs}`. Midnight-spanning sessions are filed under
 the **newest** version's calendar date so they stay grouped.
+**Concurrent `refresh()` calls are deduplicated via a
+`refreshGeneration` counter** — the stale refresh no-ops after its
+awaited `store.getEntry()` resolves, so only the latest call ever
+mutates the DOM.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
 
