@@ -73,4 +73,8 @@ describe("applyLineHunks", () => {
 	it("prepends lines for a hunk at s=0 with d=0", () => {
 		expect(applyLineHunks("a\nb", [{ s: 0, d: 0, a: ["HEAD"] }])).toBe("HEAD\na\nb");
 	});
+
+	it("appends lines for a hunk at s=N with d=0", () => {
+		expect(applyLineHunks("a\nb", [{ s: 2, d: 0, a: ["TAIL"] }])).toBe("a\nb\nTAIL");
+	});
 });
