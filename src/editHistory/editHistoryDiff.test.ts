@@ -69,4 +69,8 @@ describe("applyLineHunks", () => {
 	it("is identity when hunks is empty", () => {
 		expect(applyLineHunks("a\nb\nc", [])).toBe("a\nb\nc");
 	});
+
+	it("prepends lines for a hunk at s=0 with d=0", () => {
+		expect(applyLineHunks("a\nb", [{ s: 0, d: 0, a: ["HEAD"] }])).toBe("HEAD\na\nb");
+	});
 });
