@@ -581,6 +581,58 @@ describe("EditHistoryCapture", () => {
 		});
 	});
 
+	describe("capture atomicity", () => {
+		it("concurrent captureSnapshot calls with identical content dedupe atomically", async () => {
+			// Two captures race on the same file with identical content. Without
+			// atomic read-compute-write, both see the pre-race entry, both compute
+			// "lastContent !== content", and both append. The dedup check
+			// (lastContent === content) is effectively bypassed under race. After
+			// the fix, the transaction forces the second capture to observe the
+			// first's write, so the dedup check triggers and only one version is
+			// appended.
+
+			// Use a real store so we hit the actual queued load/save path.
+			const files: Record<string, string> = {};
+			const vault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => p in files),
+					mkdir: vi.fn(async (p: string) => { files[p] = ""; }),
+					read: vi.fn(async (p: string) => {
+						if (!(p in files)) throw new Error("not found");
+						return files[p];
+					}),
+					write: vi.fn(async (p: string, d: string) => { files[p] = d; }),
+				},
+			} as any;
+
+			const realStore = new EditHistoryStore(vault);
+			const { capture: c, pendingDb: db } = await makeCaptureWithDb(realStore, { debounceMs: 1000 });
+
+			try {
+				// Seed so we have a non-empty entry for dedup to matter.
+				await c.captureSnapshot("f1", "a.md", "v0");
+
+				// Two captures with identical new content, fired concurrently.
+				const p1 = c.captureSnapshot("f1", "a.md", "v1");
+				const p2 = c.captureSnapshot("f1", "a.md", "v1");
+				await Promise.all([p1, p2]);
+
+				const entry = await realStore.getEntry("f1");
+				expect(entry).toBeDefined();
+				// Expect base + exactly one delta. Without the fix: base + two deltas.
+				expect(entry!.versions.length).toBe(2);
+
+				const { reconstructVersion } = await import("./editHistoryDiff");
+				const final = reconstructVersion(entry!, entry!.versions.length - 1);
+				expect(final).toBe("v1");
+			} finally {
+				c.stop();
+				await db.clear();
+				db.close();
+			}
+		});
+	});
+
 	describe("recovery on start", () => {
 		it("promotes orphaned IndexedDB entries on start", async () => {
 			pendingDbCounter++;
