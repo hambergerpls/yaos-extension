@@ -4,7 +4,9 @@ import {
 	applyDiff,
 	reconstructVersion,
 	computeDiffSummary,
+	segmentLines,
 	type DiffSummary,
+	type DiffLine,
 } from "./editHistoryDiff";
 import type { FileHistoryEntry, VersionSnapshot } from "./types";
 
@@ -175,5 +177,12 @@ describe("computeDiffSummary", () => {
 	it("counts a single newline-only insert as 1 line", () => {
 		const diff: [number, string][] = [[1, "\n"]];
 		expect(computeDiffSummary(diff)).toEqual({ added: 1, removed: 0 });
+	});
+});
+
+describe("segmentLines", () => {
+	it("segments a single retain op into one retain line", () => {
+		const result: DiffLine[] = segmentLines([[0, "hello"]]);
+		expect(result).toEqual([{ kind: "retain", text: "hello" }]);
 	});
 });
