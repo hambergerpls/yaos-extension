@@ -247,4 +247,61 @@ describe("NotificationView", () => {
 
     expect(onOpenFile).toHaveBeenCalledWith("notes/doc.md", undefined);
   });
+
+  describe("refresh race", () => {
+    type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
+    function makeDeferred<T>(): Deferred<T> {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    }
+
+    it("stale concurrent refresh does not clobber newer data", async () => {
+      // Stale refresh resolves AFTER the newer one. The rendered DOM must
+      // reflect the NEWER data, not the stale data — i.e. the stale call
+      // must drop its result rather than overwrite `this.notifications`
+      // and re-render.
+      const staleNotifs = [makeNotification({ id: "stale", preview: "old" })];
+      const freshNotifs = [
+        makeNotification({ id: "fresh-1", preview: "new-1" }),
+        makeNotification({ id: "fresh-2", preview: "new-2" }),
+      ];
+
+      const d1 = makeDeferred<Notification[]>();
+      const d2 = makeDeferred<Notification[]>();
+      const queue = [d1, d2];
+      let callIndex = 0;
+      const store = {
+        getNotificationsForDevice: vi.fn(async () => queue[callIndex++]!.promise),
+        getUnreadCount: vi.fn(async () => 0),
+        markAsRead: vi.fn(async () => {}),
+        markAllAsRead: vi.fn(async () => {}),
+        isRead: vi.fn(() => false),
+      } as unknown as NotificationStore;
+
+      const view = new NotificationView({} as any, store, "Alice", vi.fn());
+      await view.onOpen();
+
+      const p1 = view.refresh();
+      const p2 = view.refresh();
+
+      // Newer call resolves first with fresh data and fully finishes rendering.
+      d2.resolve(freshNotifs);
+      await p2;
+      // Then the stale call resolves — its render call must not clobber
+      // the already-painted fresh data.
+      d1.resolve(staleNotifs);
+      await p1;
+
+      const cards = view.contentEl.querySelectorAll(
+        ".yaos-extension-notification-card",
+      );
+      expect(cards.length).toBe(freshNotifs.length);
+
+      const previews = Array.from(
+        view.contentEl.querySelectorAll(".yaos-extension-notification-preview"),
+      ).map((el) => el.textContent);
+      expect(previews).toEqual(["new-1", "new-2"]);
+    });
+  });
 });
