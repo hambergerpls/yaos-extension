@@ -92,10 +92,21 @@ export function applyLineHunks(base: string, hunks: LineHunk[]): string {
 }
 
 export function reconstructVersion(
-	_entry: FileHistoryEntry,
-	_versionIndex: number,
+	entry: FileHistoryEntry,
+	versionIndex: number,
 ): string | null {
-	throw new Error("not implemented");
+	if (versionIndex < 0 || versionIndex >= entry.versions.length) return null;
+
+	const base = entry.versions[entry.baseIndex];
+	if (!base || base.content === undefined) return null;
+
+	let content = base.content;
+	for (let i = entry.baseIndex + 1; i <= versionIndex; i++) {
+		const version = entry.versions[i];
+		if (!version || !version.hunks) return null;
+		content = applyLineHunks(content, version.hunks);
+	}
+	return content;
 }
 
 export function computeDiffSummary(_hunks: LineHunk[]): DiffSummary {
