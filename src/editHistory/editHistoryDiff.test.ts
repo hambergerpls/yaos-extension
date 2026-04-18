@@ -162,4 +162,17 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 2)).toBe("a\nb\nc");
 	});
+
+	it("works with a rebased (non-zero) baseIndex", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md", baseIndex: 2,
+			versions: [
+				{ ts: 1, device: "d", hunks: [{ s: 0, d: 0, a: ["x"] }] },
+				{ ts: 2, device: "d", hunks: [{ s: 0, d: 0, a: ["x"] }] },
+				{ ts: 3, device: "d", content: "rebased" },
+				{ ts: 4, device: "d", hunks: [{ s: 1, d: 0, a: ["!"] }] },
+			],
+		};
+		expect(reconstructVersion(entry, 3)).toBe("rebased\n!");
+	});
 });
