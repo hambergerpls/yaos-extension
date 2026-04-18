@@ -57,3 +57,49 @@ export function computeDiffSummary(diffs: DiffOp[]): DiffSummary {
 	}
 	return { added, removed };
 }
+
+export type DiffLine =
+	| { kind: "retain"; text: string }
+	| { kind: "add"; text: string }
+	| { kind: "del"; text: string };
+
+export function segmentLines(ops: DiffOp[]): DiffLine[] {
+	const result: DiffLine[] = [];
+	let oldBuf = "";
+	let newBuf = "";
+
+	const flush = () => {
+		if (oldBuf === newBuf) {
+			if (oldBuf !== "") result.push({ kind: "retain", text: oldBuf });
+		} else if (oldBuf === "") {
+			result.push({ kind: "add", text: newBuf });
+		} else if (newBuf === "") {
+			result.push({ kind: "del", text: oldBuf });
+		} else {
+			result.push({ kind: "del", text: oldBuf });
+			result.push({ kind: "add", text: newBuf });
+		}
+		oldBuf = "";
+		newBuf = "";
+	};
+
+	for (const [op, text] of ops) {
+		for (const ch of text) {
+			if (ch === "\n") {
+				flush();
+				continue;
+			}
+			if (op === 0) {
+				oldBuf += ch;
+				newBuf += ch;
+			} else if (op === 1) {
+				newBuf += ch;
+			} else if (op === -1) {
+				oldBuf += ch;
+			}
+		}
+	}
+	flush();
+
+	return result;
+}
