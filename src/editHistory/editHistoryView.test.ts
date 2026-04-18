@@ -575,5 +575,41 @@ describe("EditHistoryView", () => {
 			const retainTexts = Array.from(retainSpans).map(s => s.textContent);
 			expect(retainTexts).toContain("he");
 		});
+
+		it("initial version (> 20 lines) renders truncated add span + marker", async () => {
+			const lines = Array.from({ length: 30 }, (_, i) => `line${i + 1}`);
+			const content = lines.join("\n");
+			const entry: FileHistoryEntry = {
+				path: "notes/long.md",
+				baseIndex: 0,
+				versions: [{ ts: 1000, device: "DevA", content }],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const label = view.contentEl.querySelector(
+				".yaos-extension-edit-history-diff-initial-label",
+			);
+			expect(label?.textContent).toBe("Initial snapshot");
+
+			const addSpans = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-add",
+			);
+			expect(addSpans.length).toBe(1);
+			const addedText = addSpans[0]!.textContent ?? "";
+			const addedLineCount = addedText.split("\n").length;
+			expect(addedLineCount).toBe(20);
+			// First line preserved, line 20 preserved, line 21 not
+			expect(addedText).toContain("line1");
+			expect(addedText).toContain("line20");
+			expect(addedText).not.toContain("line21");
+
+			const marker = view.contentEl.querySelector(
+				".yaos-extension-edit-history-diff-initial-truncated",
+			);
+			expect(marker?.textContent).toBe("… (10 more lines)");
+		});
 	});
 });
