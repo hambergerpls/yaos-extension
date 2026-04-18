@@ -703,6 +703,44 @@ describe("EditHistoryView", () => {
 			expect(Array.from(texts).map(t => t.textContent)).toEqual(["a", "b", "B", "c"]);
 		});
 
+		it("trims leading and trailing unchanged runs to skip markers", async () => {
+			// 10 leading "keep" lines, one change added at end.
+			const oldLines = Array.from({ length: 10 }, (_, i) => `keep${i}`);
+			const oldContent = oldLines.join("\n");
+			const entry: FileHistoryEntry = {
+				path: "notes/long.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DevA", content: oldContent },
+					// Actual computed diff: the whole 10 lines retain + "\nCHANGE" insert.
+					{ ts: 2000, device: "DevA", diff: [[0, oldContent], [1, "\nCHANGE"]] },
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const entries = view.contentEl.querySelectorAll(".yaos-extension-edit-history-entry");
+			const hunkDiff = entries[0]!.querySelector(".yaos-extension-edit-history-diff")!;
+
+			// Leading 10 retains; change at index 10. Window [7, 10]. Keep 4 rows.
+			// No trailing retains. So: skip(7) + hunk(4 rows).
+			const skips = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-hunk-skip");
+			expect(skips.length).toBe(1);
+			expect(skips[0]!.textContent).toBe("… 7 unchanged lines");
+
+			const hunks = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-hunk");
+			expect(hunks.length).toBe(1);
+			const rows = hunks[0]!.querySelectorAll(".yaos-extension-edit-history-diff-line");
+			expect(rows.length).toBe(4);
+
+			// Last row is the add row
+			const addRows = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
+			expect(addRows.length).toBe(1);
+			expect(addRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent).toBe("CHANGE");
+		});
+
 		it("renders fallback label when mid-chain reconstruction fails", async () => {
 			// Malformed entry: base at index 0 lacks `content`, so reconstructVersion
 			// returns null for any request. The content-only version at index 1
