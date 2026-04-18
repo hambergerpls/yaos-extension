@@ -34,4 +34,9 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("a\nb", "a\nb\nTAIL");
 		expect(hunks).toEqual([{ s: 1, d: 1, a: ["b", "TAIL"] }]);
 	});
+
+	it("emits a d>0, a=[] hunk for a pure deletion", () => {
+		const hunks = computeLineHunks("a\nb\nc", "a\nc");
+		expect(hunks).toEqual([{ s: 1, d: 1, a: [] }]);
+	});
 });
