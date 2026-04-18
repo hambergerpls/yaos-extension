@@ -11,11 +11,17 @@ export interface CaptureSettings {
 	maxWaitMs: number;
 }
 
+interface FileTimer {
+	idle: ReturnType<typeof setTimeout>;
+	max: ReturnType<typeof setTimeout> | null;
+	firstScheduledAt: number;
+}
+
 export class EditHistoryCapture {
 	private store: EditHistoryStore;
 	private getDeviceName: () => string;
 	private settings: CaptureSettings;
-	private pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+	private pendingTimers: Map<string, FileTimer> = new Map();
 	private dailyCounts: Map<string, { date: string; count: number }> = new Map();
 	private observeDeepHandler: ((...args: unknown[]) => void) | null = null;
 	private idToText: any = null;
@@ -61,8 +67,9 @@ export class EditHistoryCapture {
 		this.idToText = null;
 		this.getFilePath = null;
 		this.getText = null;
-		for (const timer of this.pendingTimers.values()) {
-			clearTimeout(timer);
+		for (const { idle, max } of this.pendingTimers.values()) {
+			clearTimeout(idle);
+			if (max) clearTimeout(max);
 		}
 		this.pendingTimers.clear();
 	}
@@ -73,19 +80,30 @@ export class EditHistoryCapture {
 		});
 
 		const existing = this.pendingTimers.get(fileId);
-		if (existing) clearTimeout(existing);
+		if (existing) clearTimeout(existing.idle);
 
-		const timer = setTimeout(() => {
-			this.pendingTimers.delete(fileId);
-			void this.promoteFromDb(fileId);
-		}, this.settings.debounceMs);
+		const idle = setTimeout(() => this.fireCapture(fileId), this.settings.debounceMs);
 
-		this.pendingTimers.set(fileId, timer);
+		this.pendingTimers.set(fileId, {
+			idle,
+			max: existing?.max ?? null,
+			firstScheduledAt: existing?.firstScheduledAt ?? Date.now(),
+		});
+	}
+
+	private fireCapture(fileId: string): void {
+		const timer = this.pendingTimers.get(fileId);
+		if (!timer) return;
+		clearTimeout(timer.idle);
+		if (timer.max) clearTimeout(timer.max);
+		this.pendingTimers.delete(fileId);
+		void this.promoteFromDb(fileId);
 	}
 
 	async flush(): Promise<void> {
-		for (const timer of this.pendingTimers.values()) {
-			clearTimeout(timer);
+		for (const { idle, max } of this.pendingTimers.values()) {
+			clearTimeout(idle);
+			if (max) clearTimeout(max);
 		}
 		this.pendingTimers.clear();
 
