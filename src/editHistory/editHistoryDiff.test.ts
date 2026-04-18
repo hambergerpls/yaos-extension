@@ -65,4 +65,8 @@ describe("applyLineHunks", () => {
 		const result = applyLineHunks("a\nb\nc", [{ s: 1, d: 1, a: ["X"] }]);
 		expect(result).toBe("a\nX\nc");
 	});
+
+	it("is identity when hunks is empty", () => {
+		expect(applyLineHunks("a\nb\nc", [])).toBe("a\nb\nc");
+	});
 });
