@@ -77,4 +77,8 @@ describe("applyLineHunks", () => {
 	it("appends lines for a hunk at s=N with d=0", () => {
 		expect(applyLineHunks("a\nb", [{ s: 2, d: 0, a: ["TAIL"] }])).toBe("a\nb\nTAIL");
 	});
+
+	it("produces full content from empty base", () => {
+		expect(applyLineHunks("", [{ s: 0, d: 0, a: ["a", "b", "c"] }])).toBe("a\nb\nc");
+	});
 });
