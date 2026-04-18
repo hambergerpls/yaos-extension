@@ -267,4 +267,8 @@ describe("buildHunks", () => {
 		expect(result.length).toBe(3);
 		expect(result[1]).toEqual({ kind: "skip", count: 4 });
 	});
+
+	it("DEFAULT_CONTEXT_LINES is 3", () => {
+		expect(DEFAULT_CONTEXT_LINES).toBe(3);
+	});
 });
