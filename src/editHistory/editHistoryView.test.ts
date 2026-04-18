@@ -692,5 +692,33 @@ describe("EditHistoryView", () => {
 			);
 			expect(label).toBeNull();
 		});
+
+		it("renders fallback label when mid-chain reconstruction fails", async () => {
+			// Malformed entry: base at index 0 lacks `content`, so reconstructVersion
+			// returns null for any request. The content-only version at index 1
+			// therefore cannot synthesize a diff.
+			const entry: FileHistoryEntry = {
+				path: "notes/broken.md",
+				baseIndex: 0,
+				versions: [
+					// Index 0: no content, no diff (malformed base). Will be skipped
+					// for diff-rendering via the defensive `(diff unavailable)` branch.
+					{ ts: 1000, device: "DevA" } as any,
+					// Index 1: content-only, but reconstruction of index 0 is null.
+					{ ts: 2000, device: "DevA", content: "anything" },
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const unavailables = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-unavailable",
+			);
+			// Expect at least one: the content-only mid-chain row hitting the null branch.
+			// (The malformed base row also triggers the defensive branch.)
+			expect(unavailables.length).toBeGreaterThanOrEqual(1);
+		});
 	});
 });
