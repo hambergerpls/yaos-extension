@@ -11,4 +11,9 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("", "a\nb\nc");
 		expect(hunks).toEqual([{ s: 0, d: 0, a: ["a", "b", "c"] }]);
 	});
+
+	it("returns a single delete-everything hunk when new is empty", () => {
+		const hunks = computeLineHunks("a\nb\nc", "");
+		expect(hunks).toEqual([{ s: 0, d: 3, a: [] }]);
+	});
 });
