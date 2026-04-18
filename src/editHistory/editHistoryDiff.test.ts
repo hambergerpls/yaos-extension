@@ -364,4 +364,17 @@ describe("buildHunks", () => {
 		expect(result[0]!.kind).toBe("hunk");
 		expect((result[0] as any).lines.length).toBe(6);
 	});
+
+	it("does not emit leading skip when lead retains < context", () => {
+		const lines: DiffLine[] = [
+			{ kind: "retain", text: "r1" },
+			{ kind: "retain", text: "r2" },
+			{ kind: "add", text: "A" },
+			{ kind: "retain", text: "r3" },
+			{ kind: "retain", text: "r4" },
+		];
+		const result = buildHunks(lines, 3);
+		expect(result.length).toBe(1);
+		expect(result[0]!.kind).toBe("hunk");
+	});
 });
