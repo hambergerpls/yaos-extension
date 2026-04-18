@@ -191,4 +191,9 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 0)).toBeNull();
 	});
+
+	it("returns null for empty versions array", () => {
+		const entry: FileHistoryEntry = { path: "t.md", baseIndex: 0, versions: [] };
+		expect(reconstructVersion(entry, 0)).toBeNull();
+	});
 });
