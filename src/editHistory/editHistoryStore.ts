@@ -41,15 +41,28 @@ export class EditHistoryStore {
 		await this.vault.adapter.write(HISTORY_PATH, JSON.stringify(data, null, "\t"));
 	}
 
+	/**
+	 * Atomically read, mutate, and write the edit history file.
+	 * The callback receives the current data; its mutations are flushed to disk
+	 * when it resolves. Serialized against all other mutating operations via
+	 * the internal write queue.
+	 */
+	async transaction<T>(fn: (data: EditHistoryData) => T | Promise<T>): Promise<T> {
+		return this.enqueue(async () => {
+			const data = await this.load();
+			const result = await fn(data);
+			await this.save(data);
+			return result;
+		});
+	}
+
 	async addVersion(
 		fileId: string,
 		path: string,
 		snapshot: VersionSnapshot,
 	): Promise<void> {
-		return this.enqueue(async () => {
-			const data = await this.load();
+		await this.transaction((data) => {
 			this.applyVersion(data, fileId, path, snapshot);
-			await this.save(data);
 		});
 	}
 
@@ -57,12 +70,10 @@ export class EditHistoryStore {
 		entries: Array<{ fileId: string; path: string; snapshot: VersionSnapshot }>,
 	): Promise<void> {
 		if (entries.length === 0) return;
-		return this.enqueue(async () => {
-			const data = await this.load();
+		await this.transaction((data) => {
 			for (const { fileId, path, snapshot } of entries) {
 				this.applyVersion(data, fileId, path, snapshot);
 			}
-			await this.save(data);
 		});
 	}
 
@@ -94,8 +105,7 @@ export class EditHistoryStore {
 	}
 
 	async prune(retentionDays: number): Promise<void> {
-		return this.enqueue(async () => {
-			const data = await this.load();
+		await this.transaction((data) => {
 			const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
 			for (const fileId of Object.keys(data.entries)) {
@@ -124,16 +134,12 @@ export class EditHistoryStore {
 					entry.versions = entry.versions.slice(firstRecentIdx);
 				}
 			}
-
-			await this.save(data);
 		});
 	}
 
 	async pruneEntry(fileId: string): Promise<void> {
-		return this.enqueue(async () => {
-			const data = await this.load();
+		await this.transaction((data) => {
 			delete data.entries[fileId];
-			await this.save(data);
 		});
 	}
 }
