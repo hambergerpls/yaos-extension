@@ -42,12 +42,12 @@ describe("EditHistoryStore", () => {
 		it("returns default data when file does not exist", async () => {
 			const store = createStore();
 			const data = await store.load();
-			expect(data).toEqual({ version: 1, entries: {} });
+			expect(data).toEqual({ version: 2, entries: {} });
 		});
 
 		it("returns parsed data when file exists", async () => {
 			const stored: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: { "abc": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(stored) });
@@ -61,13 +61,32 @@ describe("EditHistoryStore", () => {
 			vault = makeVault({ [HISTORY_PATH]: "not json" });
 			const store = new EditHistoryStore(vault);
 			const data = await store.load();
-			expect(data).toEqual({ version: 1, entries: {} });
+			expect(data).toEqual({ version: 2, entries: {} });
 		});
 
 		it("creates .yaos-extension directory if needed on save", async () => {
 			const store = createStore();
-			await store.save({ version: 1, entries: {} });
+			await store.save({ version: 2, entries: {} });
 			expect(vault.adapter.mkdir).toHaveBeenCalledWith(".yaos-extension");
+		});
+
+		it("wipes entries on load when stored version is not 2 (v1 → v2 migration)", async () => {
+			const staleV1 = {
+				version: 1,
+				entries: {
+					"file-a": { path: "a.md", baseIndex: 0, versions: [{ ts: 1, device: "d", content: "x" }] },
+				},
+			};
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(staleV1) });
+			const store = new EditHistoryStore(vault);
+
+			const data = await store.load();
+			expect(data).toEqual({ version: 2, entries: {} });
+
+			// And it should have persisted the wipe
+			const persisted = JSON.parse(vault.adapter.write.mock.calls[0][1]);
+			expect(persisted.version).toBe(2);
+			expect(persisted.entries).toEqual({});
 		});
 	});
 
@@ -75,7 +94,7 @@ describe("EditHistoryStore", () => {
 		it("writes data as JSON to the history file", async () => {
 			const store = createStore();
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: { "abc": makeEntry() },
 			};
 			await store.save(data);
@@ -90,7 +109,7 @@ describe("EditHistoryStore", () => {
 
 	describe("addVersion", () => {
 		it("creates a new entry for an unknown file ID", async () => {
-			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 1, entries: {} }) });
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 2, entries: {} }) });
 			const store = new EditHistoryStore(vault);
 
 			const snap: VersionSnapshot = {
@@ -109,7 +128,7 @@ describe("EditHistoryStore", () => {
 
 		it("appends a delta version to an existing entry", async () => {
 			const existing: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: { "file1": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
@@ -118,7 +137,7 @@ describe("EditHistoryStore", () => {
 			const snap: VersionSnapshot = {
 				ts: 2000,
 				device: "Dev2",
-				diff: [[0, "hello"], [1, " world"]],
+				hunks: [{ s: 0, d: 1, a: ["hello world"] }],
 			};
 			await store.addVersion("file1", "test.md", snap);
 
@@ -128,7 +147,7 @@ describe("EditHistoryStore", () => {
 
 		it("updates the path on rename", async () => {
 			const existing: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: { "file1": makeEntry({ path: "old.md" }) },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
@@ -137,7 +156,7 @@ describe("EditHistoryStore", () => {
 			await store.addVersion("file1", "new-path.md", {
 				ts: 2000,
 				device: "Dev1",
-				diff: [[0, "hello"]],
+				hunks: [],
 			});
 
 			const written = JSON.parse(vault.adapter.write.mock.calls[0][1]);
@@ -146,15 +165,15 @@ describe("EditHistoryStore", () => {
 
 		it("updates baseIndex when a content snapshot is appended after deltas", async () => {
 			const existing: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"file1": {
 						path: "test.md",
 						baseIndex: 0,
 						versions: [
 							{ ts: 1000, device: "Dev1", content: "base" },
-							{ ts: 2000, device: "Dev2", diff: [[1, " extra"]] },
-							{ ts: 3000, device: "Dev3", diff: [[1, " more"]] },
+							{ ts: 2000, device: "Dev2", hunks: [{ s: 0, d: 1, a: ["base extra"] }] },
+							{ ts: 3000, device: "Dev3", hunks: [{ s: 0, d: 1, a: ["base extra more"] }] },
 						],
 					},
 				},
@@ -177,7 +196,7 @@ describe("EditHistoryStore", () => {
 	describe("getEntry", () => {
 		it("returns the entry for a file ID", async () => {
 			const entry = makeEntry();
-			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 1, entries: { "file1": entry } }) });
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 2, entries: { "file1": entry } }) });
 			const store = new EditHistoryStore(vault);
 
 			const result = await store.getEntry("file1");
@@ -199,7 +218,7 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"old-file": makeEntry({
 						versions: [{ ts: oldTs, device: "Dev1", content: "old" }],
@@ -225,12 +244,12 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"file1": makeEntry({
 						versions: [
 							{ ts: oldTs, device: "Dev1", content: "old base" },
-							{ ts: recentTs, device: "Dev2", diff: [[1, "new"]] },
+							{ ts: recentTs, device: "Dev2", hunks: [{ s: 0, d: 1, a: ["old basenew"] }] },
 						],
 					}),
 				},
@@ -253,15 +272,15 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"file1": {
 						path: "test.md",
 						baseIndex: 0,
 						versions: [
 							{ ts: oldTs, device: "Dev1", content: "old base" },
-							{ ts: oldTs + 1000, device: "Dev1", diff: [[0, "old base"], [1, " more"]] },
-							{ ts: recentTs, device: "Dev2", diff: [[0, "old base more"], [1, " and more"]] },
+							{ ts: oldTs + 1000, device: "Dev1", hunks: [{ s: 0, d: 1, a: ["old base more"] }] },
+							{ ts: recentTs, device: "Dev2", hunks: [{ s: 0, d: 1, a: ["old base more and more"] }] },
 						],
 					},
 				},
@@ -281,7 +300,7 @@ describe("EditHistoryStore", () => {
 
 		it("removes entries for deleted file IDs", async () => {
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"deleted-file": makeEntry({ path: "gone.md" }),
 					"active-file": makeEntry({ path: "active.md" }),
@@ -304,17 +323,17 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 5 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 1,
+				version: 2,
 				entries: {
 					"file1": {
 						path: "test.md",
 						baseIndex: 3,
 						versions: [
-							{ ts: oldTs, device: "Dev1", diff: [[1, "x"]] },
-							{ ts: oldTs + 1000, device: "Dev1", diff: [[1, "y"]] },
-							{ ts: midTs, device: "Dev1", diff: [[1, "z"]] },
+							{ ts: oldTs, device: "Dev1", hunks: [{ s: 0, d: 0, a: ["x"] }] },
+							{ ts: oldTs + 1000, device: "Dev1", hunks: [{ s: 0, d: 0, a: ["y"] }] },
+							{ ts: midTs, device: "Dev1", hunks: [{ s: 0, d: 0, a: ["z"] }] },
 							{ ts: midTs + 1000, device: "Dev2", content: "rebased" },
-							{ ts: recentTs, device: "Dev3", diff: [[0, "rebased"], [1, "!"]] },
+							{ ts: recentTs, device: "Dev3", hunks: [{ s: 0, d: 1, a: ["rebased!"] }] },
 						],
 					},
 				},
@@ -378,7 +397,7 @@ describe("EditHistoryStore", () => {
 			const store = new EditHistoryStore(slowVault);
 
 			const p1 = store.addVersion("file-a", "a.md", { ts: 1, device: "D", content: "v1" });
-			const p2 = store.addVersion("file-a", "a.md", { ts: 2, device: "D", diff: [[0, "v1"], [1, "2"]] });
+			const p2 = store.addVersion("file-a", "a.md", { ts: 2, device: "D", hunks: [{ s: 0, d: 1, a: ["v12"] }] });
 
 			while (gate.pending.length < 1) await new Promise((r) => setTimeout(r, 0));
 			gate.pending.shift()!();
