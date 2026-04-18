@@ -237,4 +237,18 @@ describe("segmentLines", () => {
 			{ kind: "retain", text: "next" },
 		]);
 	});
+
+	it("splits a multi-line insert into per-line add rows", () => {
+		const result = segmentLines([
+			[0, "a\n"],
+			[1, "x\ny\n"],
+			[0, "b"],
+		]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "a" },
+			{ kind: "add", text: "x" },
+			{ kind: "add", text: "y" },
+			{ kind: "retain", text: "b" },
+		]);
+	});
 });
