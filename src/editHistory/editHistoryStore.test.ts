@@ -370,5 +370,25 @@ describe("EditHistoryStore", () => {
 			expect(data.entries["file-a"]).toBeDefined();
 			expect(data.entries["file-b"]).toBeDefined();
 		});
+
+		it("concurrent addVersion to same fileId preserves both versions", async () => {
+			const files: Record<string, string> = {};
+			const gate = { pending: [] as Array<() => void> };
+			const slowVault = makeSlowVault(files, gate);
+			const store = new EditHistoryStore(slowVault);
+
+			const p1 = store.addVersion("file-a", "a.md", { ts: 1, device: "D", content: "v1" });
+			const p2 = store.addVersion("file-a", "a.md", { ts: 2, device: "D", diff: [[0, "v1"], [1, "2"]] });
+
+			while (gate.pending.length < 1) await new Promise((r) => setTimeout(r, 0));
+			gate.pending.shift()!();
+			await p1;
+			while (gate.pending.length < 1) await new Promise((r) => setTimeout(r, 0));
+			gate.pending.shift()!();
+			await p2;
+
+			const data = JSON.parse(files[HISTORY_PATH]!);
+			expect(data.entries["file-a"]!.versions.length).toBe(2);
+		});
 	});
 });
