@@ -648,6 +648,36 @@ describe("EditHistoryCapture", () => {
 				db.close();
 			}
 		});
+
+		it("promoteFromDb keeps pending edit in IDB when captureSnapshot fails", async () => {
+			// Make the store throw on the next transaction.
+			const failingStore = {
+				async getEntry() { return undefined; },
+				async transaction(_fn: any) {
+					throw new Error("disk full");
+				},
+				async addVersion() { throw new Error("disk full"); },
+				async addVersions() { throw new Error("disk full"); },
+				async load() { return { version: 1, entries: {} }; },
+				async save() { throw new Error("disk full"); },
+			} as any as EditHistoryStore;
+
+			const { capture: c, pendingDb: db } = await makeCaptureWithDb(failingStore, { debounceMs: 20 });
+			try {
+				c.scheduleCapture("f1", "a.md", "hello");
+				await sleep(80); // let idle fire → fireCapture → promoteFromDb
+
+				// After a failed promote, the IDB entry MUST still be present so
+				// recoverOrphans can retry on next plugin load.
+				const stillPending = await db.get("f1");
+				expect(stillPending).toBeDefined();
+				expect(stillPending!.content).toBe("hello");
+			} finally {
+				c.stop();
+				await db.clear();
+				db.close();
+			}
+		});
 	});
 
 	describe("recovery on start", () => {
