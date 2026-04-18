@@ -874,3 +874,44 @@
   background: var(--interactive-accent);
   color: var(--text-on-accent);
 }
+
+/* Edit history — session grouping */
+
+.yaos-extension-edit-history-session {
+  margin: 4px 0;
+}
+
+.yaos-extension-edit-history-session-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.yaos-extension-edit-history-session-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yaos-extension-edit-history-session-count {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.yaos-extension-edit-history-session-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  transition: transform 0.1s ease;
+}
+
+.yaos-extension-edit-history-session-children {
+  margin-left: 16px;
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: 8px;
+}
