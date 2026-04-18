@@ -423,23 +423,23 @@ describe("EditHistoryCapture", () => {
 	describe("maxWait", () => {
 		it("fires at maxWaitMs when edits are continuous", async () => {
 			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
-				debounceMs: 200,
-				maxWaitMs: 80,
+				debounceMs: 400,
+				maxWaitMs: 150,
 			});
 
 			try {
-				// Edits every 20ms. Idle (200ms) never fires because it's reset
-				// constantly; max (80ms) must fire at ~t=80 (set when first edit arrived).
+				// Edits every 20ms. Idle (400ms) never fires because it's reset
+				// constantly; max (150ms) must fire at ~t=150 (set when first edit arrived).
 				fastCapture.scheduleCapture("f1", "a.md", "v0");
 				await sleep(20);
 				fastCapture.scheduleCapture("f1", "a.md", "v1");
 				await sleep(20);
 				fastCapture.scheduleCapture("f1", "a.md", "v2");
-				// Last edit at t=40. Max fires at t=80. Idle would fire at t=240.
-				// 40ms buffer lets pendingDb put v2 before max fires.
+				// Last edit at t=40. Max fires at t=150. Idle would fire at t=440.
+				// 110ms buffer lets pendingDb put v2 before max fires.
 
-				await sleep(100);
-				// t ≈ 140ms. Max already fired at t≈80.
+				await sleep(200);
+				// t ≈ 240ms. Max already fired at t≈150.
 				expect(captured.calls).toHaveLength(1);
 				expect(captured.calls[0].snap.content).toBe("v2");
 			} finally {

@@ -14,6 +14,9 @@ export interface CaptureSettings {
 interface FileTimer {
 	idle: ReturnType<typeof setTimeout>;
 	max: ReturnType<typeof setTimeout> | null;
+	// Timestamp of the first edit in the current burst. Not currently consumed;
+	// reserved for future UI affordances (e.g. "capturing in Xs" indicator) or
+	// telemetry on typical burst durations.
 	firstScheduledAt: number;
 }
 
