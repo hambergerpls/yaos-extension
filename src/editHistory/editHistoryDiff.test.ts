@@ -5,8 +5,11 @@ import {
 	reconstructVersion,
 	computeDiffSummary,
 	segmentLines,
+	buildHunks,
+	DEFAULT_CONTEXT_LINES,
 	type DiffSummary,
 	type DiffLine,
+	type HunkItem,
 } from "./editHistoryDiff";
 import type { FileHistoryEntry, VersionSnapshot } from "./types";
 
@@ -282,5 +285,15 @@ describe("segmentLines", () => {
 			{ kind: "add", text: "b" },
 			{ kind: "retain", text: "c" },
 		]);
+	});
+});
+
+describe("buildHunks", () => {
+	it("returns empty array when there are no changes", () => {
+		const lines: DiffLine[] = [
+			{ kind: "retain", text: "a" },
+			{ kind: "retain", text: "b" },
+		];
+		expect(buildHunks(lines, 3)).toEqual([]);
 	});
 });
