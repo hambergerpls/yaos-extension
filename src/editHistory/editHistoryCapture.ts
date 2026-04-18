@@ -8,6 +8,7 @@ export interface CaptureSettings {
 	rebaseInterval: number;
 	maxPerFilePerDay: number;
 	debounceMs: number;
+	maxWaitMs: number;
 }
 
 export class EditHistoryCapture {
@@ -16,9 +17,7 @@ export class EditHistoryCapture {
 	private settings: CaptureSettings;
 	private pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 	private dailyCounts: Map<string, { date: string; count: number }> = new Map();
-	private transactionHandler: ((...args: unknown[]) => void) | null = null;
-	private observeHandler: ((...args: unknown[]) => void) | null = null;
-	private ydoc: any = null;
+	private observeDeepHandler: ((...args: unknown[]) => void) | null = null;
 	private idToText: any = null;
 	private getFilePath: ((fileId: string) => string | undefined) | null = null;
 	private getText: ((fileId: string) => { toJSON: () => string } | null | undefined) | null = null;
@@ -40,37 +39,25 @@ export class EditHistoryCapture {
 	}
 
 	start(
-		ydoc: any,
 		idToText: any,
 		getFilePath: (fileId: string) => string | undefined,
 		getText: (fileId: string) => { toJSON: () => string } | null | undefined,
 	): void {
-		this.ydoc = ydoc;
 		this.idToText = idToText;
 		this.getFilePath = getFilePath;
 		this.getText = getText;
 
-		this.transactionHandler = () => {
-			this.onTransaction();
+		this.observeDeepHandler = (events: any) => {
+			this.onIdToTextObserveDeep(events);
 		};
-		ydoc.on("afterTransaction", this.transactionHandler);
-
-		this.observeHandler = (event: any) => {
-			this.onIdToTextObserve(event);
-		};
-		idToText.observe(this.observeHandler);
+		idToText.observeDeep(this.observeDeepHandler);
 	}
 
 	stop(): void {
-		if (this.transactionHandler && this.ydoc) {
-			this.ydoc.off("afterTransaction", this.transactionHandler);
+		if (this.observeDeepHandler && this.idToText) {
+			this.idToText.unobserveDeep(this.observeDeepHandler);
 		}
-		if (this.observeHandler && this.idToText) {
-			this.idToText.unobserve(this.observeHandler);
-		}
-		this.transactionHandler = null;
-		this.observeHandler = null;
-		this.ydoc = null;
+		this.observeDeepHandler = null;
 		this.idToText = null;
 		this.getFilePath = null;
 		this.getText = null;
@@ -216,16 +203,28 @@ export class EditHistoryCapture {
 		}
 	}
 
-	private onTransaction(): void {
-	}
-
-	private onIdToTextObserve(event: any): void {
+	private onIdToTextObserveDeep(events: any[]): void {
 		if (!this.getFilePath || !this.getText) return;
 
-		const changedKeys: Map<string, unknown> = event.keys;
-		if (!changedKeys) return;
+		const fileIds = new Set<string>();
 
-		for (const [fileId] of changedKeys) {
+		for (const event of events) {
+			const eventPath: unknown[] = event.path;
+			if (eventPath && eventPath.length >= 1) {
+				// Text-level change inside the map: path[0] is the fileId
+				fileIds.add(eventPath[0] as string);
+			} else {
+				// Map-level change (key added/removed): iterate event.keys
+				const changedKeys: Map<string, unknown> | undefined = event.keys;
+				if (changedKeys) {
+					for (const [fileId] of changedKeys) {
+						fileIds.add(fileId);
+					}
+				}
+			}
+		}
+
+		for (const fileId of fileIds) {
 			const yText = this.getText(fileId);
 			if (!yText) continue;
 

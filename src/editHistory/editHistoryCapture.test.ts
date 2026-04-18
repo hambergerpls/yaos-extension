@@ -43,7 +43,7 @@ let pendingDbCounter = 0;
 
 async function makeCaptureWithDb(
 	store: EditHistoryStore,
-	settings: Partial<{ rebaseInterval: number; maxPerFilePerDay: number; debounceMs: number }> = {},
+	settings: Partial<{ rebaseInterval: number; maxPerFilePerDay: number; debounceMs: number; maxWaitMs: number }> = {},
 ): Promise<{ capture: EditHistoryCapture; pendingDb: PendingEditsDb }> {
 	pendingDbCounter++;
 	const pendingDb = new PendingEditsDb(`test-edit-history-${pendingDbCounter}-${Math.random().toString(36).slice(2)}`);
@@ -55,6 +55,7 @@ async function makeCaptureWithDb(
 			rebaseInterval: settings.rebaseInterval ?? 3,
 			maxPerFilePerDay: settings.maxPerFilePerDay ?? 50,
 			debounceMs: settings.debounceMs ?? 30000,
+			maxWaitMs: settings.maxWaitMs ?? 60000,
 		},
 		1_000_000,
 		pendingDb,
@@ -162,21 +163,16 @@ describe("EditHistoryCapture", () => {
 	});
 
 	describe("start/stop", () => {
-		it("subscribes to afterTransaction on ydoc and observe on idToText", () => {
-			const on = vi.fn();
-			const off = vi.fn();
-			const observe = vi.fn();
-			const unobserve = vi.fn();
-			const ydoc = { on, off };
-			const idToText = { observe, unobserve };
+		it("subscribes to observeDeep on idToText", () => {
+			const observeDeep = vi.fn();
+			const unobserveDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep };
 
-			capture.start(ydoc as any, idToText as any, vi.fn(), vi.fn());
-			expect(on).toHaveBeenCalledWith("afterTransaction", expect.any(Function));
-			expect(observe).toHaveBeenCalledWith(expect.any(Function));
+			capture.start(idToText as any, vi.fn(), vi.fn());
+			expect(observeDeep).toHaveBeenCalledWith(expect.any(Function));
 
 			capture.stop();
-			expect(off).toHaveBeenCalledWith("afterTransaction", expect.any(Function));
-			expect(unobserve).toHaveBeenCalled();
+			expect(unobserveDeep).toHaveBeenCalled();
 		});
 	});
 
@@ -238,28 +234,25 @@ describe("EditHistoryCapture", () => {
 		});
 	});
 
-	describe("onTransaction", () => {
-		it("schedules capture for changed file IDs from idToText observe", async () => {
+	describe("observeDeep", () => {
+		it("schedules capture for text-level changes (path has fileId)", async () => {
 			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
-			const on = vi.fn();
-			const off = vi.fn();
-			const observe = vi.fn();
-			const unobserve = vi.fn();
-			const idToText = { observe, unobserve };
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
 
 			const getFilePath = vi.fn((_id: string) => "notes/a.md");
 			const getText = vi.fn((_id: string) => ({ toJSON: () => "content from CRDT" }));
 
 			try {
-				fastCapture.start({ on, off } as any, idToText as any, getFilePath, getText);
+				fastCapture.start(idToText as any, getFilePath, getText);
 
-				expect(observe).toHaveBeenCalledWith(expect.any(Function));
+				expect(observeDeep).toHaveBeenCalledWith(expect.any(Function));
 
-				const observeHandler = observe.mock.calls[0]![0];
-				const changedKeys = new Map<string, { action: string }>();
-				changedKeys.set("file1", { action: "update" });
-				const yMapEvent = { keys: changedKeys, transaction: {} };
-				observeHandler(yMapEvent);
+				const handler = observeDeep.mock.calls[0]![0];
+				// observeDeep passes (events[], transaction)
+				// text-level change: event.path = [fileId]
+				const events = [{ path: ["file1"] }];
+				handler(events, {});
 
 				expect(captured.calls).toHaveLength(0);
 
@@ -274,22 +267,81 @@ describe("EditHistoryCapture", () => {
 			}
 		});
 
+		it("schedules capture for map-level changes (keys added)", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
+
+			const getFilePath = vi.fn((_id: string) => "notes/b.md");
+			const getText = vi.fn((_id: string) => ({ toJSON: () => "new file content" }));
+
+			try {
+				fastCapture.start(idToText as any, getFilePath, getText);
+
+				const handler = observeDeep.mock.calls[0]![0];
+				// map-level change: event.path = [], event.keys has changed entries
+				const changedKeys = new Map<string, { action: string }>();
+				changedKeys.set("file2", { action: "add" });
+				const events = [{ path: [], keys: changedKeys }];
+				handler(events, {});
+
+				await sleep(100);
+				expect(captured.calls).toHaveLength(1);
+				expect(captured.calls[0].snap.content).toBe("new file content");
+				expect(captured.calls[0].path).toBe("notes/b.md");
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("deduplicates fileIds across multiple events", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
+
+			let callCount = 0;
+			const getFilePath = vi.fn((_id: string) => "notes/a.md");
+			const getText = vi.fn((_id: string) => {
+				callCount++;
+				return { toJSON: () => `content-${callCount}` };
+			});
+
+			try {
+				fastCapture.start(idToText as any, getFilePath, getText);
+
+				const handler = observeDeep.mock.calls[0]![0];
+				// Two events for the same fileId
+				const events = [
+					{ path: ["file1"] },
+					{ path: ["file1"] },
+				];
+				handler(events, {});
+
+				await sleep(100);
+				// Should only schedule once per fileId
+				expect(captured.calls).toHaveLength(1);
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
 		it("ignores file IDs where getText returns null", async () => {
 			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
-			const on = vi.fn();
-			const off = vi.fn();
-			const observe = vi.fn();
-			const idToText = { observe, unobserve: vi.fn() };
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
 			const getFilePath = vi.fn(() => "notes/a.md");
 			const getText = vi.fn(() => null);
 
 			try {
-				fastCapture.start({ on, off } as any, idToText as any, getFilePath, getText);
+				fastCapture.start(idToText as any, getFilePath, getText);
 
-				const observeHandler = observe.mock.calls[0]![0];
-				const changedKeys = new Map();
-				changedKeys.set("file1", { action: "update" });
-				observeHandler({ keys: changedKeys, transaction: {} });
+				const handler = observeDeep.mock.calls[0]![0];
+				const events = [{ path: ["file1"] }];
+				handler(events, {});
 
 				await sleep(100);
 				expect(captured.calls).toHaveLength(0);
@@ -378,7 +430,7 @@ describe("EditHistoryCapture", () => {
 			const recoveryCapture = new EditHistoryCapture(
 				store,
 				() => "TestDevice",
-				{ rebaseInterval: 3, maxPerFilePerDay: 50, debounceMs: 30000 },
+				{ rebaseInterval: 3, maxPerFilePerDay: 50, debounceMs: 30000, maxWaitMs: 60000 },
 				1_000_000,
 				recoveryDb,
 			);

@@ -5,7 +5,7 @@ import {
 } from "./settings";
 import { PresenceTracker } from "./presenceTracker";
 import { PresenceStatusBar } from "./statusBar";
-import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, getYDoc, getVaultSync, getFileId, getFilePath, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
+import { isYaosAvailable, isYaosConnected, getLocalDeviceName, getRemotePeers, getAllKnownDevices, getVaultSync, getFileId, getFilePath, type RemotePeer, type KnownDevice, type DeviceRecord } from "./yaosApi";
 import { CommentStore } from "./comments/commentStore";
 import { InlineCommentPanel } from "./comments/inlineCommentPanel";
 import { registerCommentCommands, getSelectionInfo, type DeviceInfo } from "./comments/commentCommands";
@@ -194,10 +194,17 @@ export default class YaosExtensionPlugin extends Plugin {
         }),
       );
 
+      this.registerEvent(
+        this.app.vault.on("modify", (file) => {
+          if (file.path === ".yaos-extension/edit-history.json") {
+            this.refreshEditHistoryView();
+          }
+        }),
+      );
+
       if (isYaosAvailable(this.app)) {
         const vaultSync = getVaultSync(this.app);
-        const ydoc = getYDoc(this.app);
-        if (vaultSync && ydoc) {
+        if (vaultSync) {
           try {
             const pendingDb = new PendingEditsDb("yaos-ext:edit-history-pending");
             await pendingDb.open();
@@ -210,6 +217,7 @@ export default class YaosExtensionPlugin extends Plugin {
                 rebaseInterval: this.settings.editHistoryRebaseInterval,
                 maxPerFilePerDay: this.settings.editHistoryMaxPerFilePerDay,
                 debounceMs: this.settings.editHistoryDebounceMs,
+                maxWaitMs: 60_000,
               },
               1_000_000,
               pendingDb,
@@ -218,7 +226,6 @@ export default class YaosExtensionPlugin extends Plugin {
             await this.editHistoryCapture.recoverOrphans();
 
             this.editHistoryCapture.start(
-              ydoc,
               (vaultSync as any).idToText,
               (fileId: string) => getFilePath(this.app, fileId),
               (fileId: string) => {
