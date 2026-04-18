@@ -109,8 +109,14 @@ export function reconstructVersion(
 	return content;
 }
 
-export function computeDiffSummary(_hunks: LineHunk[]): DiffSummary {
-	throw new Error("not implemented");
+export function computeDiffSummary(hunks: LineHunk[]): DiffSummary {
+	let added = 0;
+	let removed = 0;
+	for (const h of hunks) {
+		added += h.a.length;
+		removed += h.d;
+	}
+	return { added, removed };
 }
 
 export type DiffLine =
