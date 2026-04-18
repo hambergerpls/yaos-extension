@@ -29,11 +29,19 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |     +-- editorMentionPlugin.ts (CM6 ViewPlugin + keymap for @mention in editor + sidebar)
   |
   +-- notifications/
-        +-- notificationStore.ts  (Read/write notifications.jsonl + local read state)
-        +-- notificationView.ts   (Obsidian ItemView: notification panel)
-        +-- notificationHelpers.ts (Pure functions: createMentionNotifications, createReplyNotification)
+  |     +-- notificationStore.ts  (Read/write notifications.jsonl + local read state)
+  |     +-- notificationView.ts   (Obsidian ItemView: notification panel)
+  |     +-- notificationHelpers.ts (Pure functions: createMentionNotifications, createReplyNotification)
+  |
+  +-- editHistory/
+        +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
+        +-- editHistoryDiff.ts    (Pure: fast-diff wrappers + reconstructVersion + computeDiffSummary)
+        +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
+        +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
+        +-- editHistoryCapture.ts (Subscribes to Y.Map observeDeep + debounce/maxWait + batches into store)
+        +-- editHistoryView.ts    (Obsidian ItemView: sidebar with date groups + session grouping)
 
-styles.css               (CSS overrides for cursor labels + status bar + comments + notifications)
+styles.css               (CSS overrides for cursor labels + status bar + comments + notifications + edit history)
 ```
 
 Direct import relationships:
@@ -59,6 +67,12 @@ Direct import relationships:
 | `notifications/notificationStore` | comments/types, obsidian (`Vault`) |
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
 | `notifications/notificationHelpers` | comments/types |
+| `editHistory/types` | nothing |
+| `editHistory/editHistoryDiff` | editHistory/types, fast-diff |
+| `editHistory/pendingEditsDb` | nothing |
+| `editHistory/editHistoryStore` | editHistory/types, obsidian (`Vault`), ../logger |
+| `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, editHistory/pendingEditsDb, ../logger |
+| `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, obsidian (`ItemView`) |
 
 Siblings never import each other. `main.ts` is the only module that wires everything
 together.
@@ -422,13 +436,109 @@ Pure functions with no side effects:
 - `createReplyNotification(opts)` -- returns `Notification | null` (null if
   replier is the comment author)
 
+### editHistory/types.ts -- Shared type definitions
+
+Exports `EditHistoryData`, `FileHistoryEntry`, `VersionSnapshot`, `DiffOp`.
+Pure data, no logic. A `VersionSnapshot` has either `content` (base version)
+or `diff` (delta version).
+
+### editHistory/editHistoryDiff.ts -- Diff + reconstruction
+
+Pure functions wrapping `fast-diff`:
+- `computeDiff(old, new)` -- returns `DiffOp[]`
+- `applyDiff(base, diffs)` -- returns new content
+- `reconstructVersion(entry, versionIndex)` -- walks delta chain from
+  `entry.baseIndex`; returns `null` if any delta is missing
+- `computeDiffSummary(diffs)` -- returns `{added, removed}` counted in
+  **lines**, not characters (newline-delimited)
+
+### editHistory/editHistoryStore.ts -- JSON persistence
+
+`EditHistoryStore` manages `.yaos-extension/edit-history.json` (synced via
+YAOS). Maintains an in-memory copy; flushes to disk after each mutation
+via `saveData()` queue.
+
+Key methods:
+- `load()` / `save()` -- disk I/O
+- `getEntry(fileId)` -- returns `FileHistoryEntry | undefined`
+- `addVersion(fileId, path, snap)` -- single version
+- `addVersions(batch)` -- batched writes for flush/recovery paths
+- `prune()` / `pruneEntry(fileId)` -- retention cleanup
+
+Constructor: `new EditHistoryStore(vault, filePath)`.
+
+### editHistory/pendingEditsDb.ts -- IndexedDB crash-safe staging
+
+Crash-safe buffer for in-flight edits that haven't yet been promoted to
+the synced JSON. Written on every keystroke; cleared after promotion.
+Orphans (e.g. from a browser crash mid-debounce) are recovered on next
+plugin load via `recoverOrphans()`.
+
+Key methods: `open()`, `put(edit)`, `get(fileId)`, `getAll()`,
+`remove(fileId)`, `clear()`, `close()`.
+
+Constructor: `new PendingEditsDb(dbName)`.
+
+### editHistory/editHistoryCapture.ts -- Capture orchestrator
+
+Subscribes to `vaultSync.idToText.observeDeep(...)` and funnels every
+observed Y.Map / Y.Text change through a two-timer debounce-with-maxWait
+pattern, then promotes staged edits from IndexedDB into the JSON store.
+
+Per file, keeps a `FileTimer { idle, max, firstScheduledAt }`:
+
+- **idle** (`settings.debounceMs`, default 5s): reset on every edit. Fires
+  when the user pauses typing.
+- **max** (`settings.maxWaitMs`, currently hardcoded 60s in `main.ts`): set
+  once at the start of a burst and never reset. Guarantees a snapshot even
+  during continuous editing when idle would be starved.
+
+Whichever timer fires first calls `fireCapture()`, which cancels the other,
+deletes the map entry, and promotes the pending IDB edit into the store.
+
+Other responsibilities:
+- Enforces `maxPerFilePerDay` quota
+- Rebases to a full-content snapshot every `rebaseInterval` versions
+- Skips captures when content matches last version
+- `flush()` and `stop()` both drain timers and promote any pending edits
+- `recoverOrphans()` promotes stale IDB entries on plugin load
+
+Constructor: `new EditHistoryCapture(store, getDeviceName, settings, maxSizeBytes, pendingDb)`.
+
+### editHistory/editHistoryView.ts -- Sidebar panel
+
+Obsidian `ItemView` with view type `"yaos-extension-edit-history"`.
+Renders a file's version timeline grouped first by calendar date and
+then by **session**.
+
+A session is a run of consecutive versions (newest-first walk) where:
+- device is the same
+- adjacent timestamps are within 5 minutes
+
+Sessions with a single version render as a flat entry (no chrome).
+Multi-version sessions render a collapsible header showing device,
+time range, edit count, and aggregate added/removed line counts;
+individual versions with their Restore buttons are revealed on
+expand. Expanded-state persists across `refresh()` calls via the
+instance field `expandedSessions: Set<string>` keyed by
+`${device}-${startTs}`. Midnight-spanning sessions are filed under
+the **newest** version's calendar date so they stay grouped.
+
+Constructor: `new EditHistoryView(leaf, store, onRestore)`.
+
 ### settings.ts -- Configuration data
 
-Exports the `YaosExtensionSettings` interface (5 booleans) and `DEFAULT_SETTINGS`.
+Exports the `YaosExtensionSettings` interface and `DEFAULT_SETTINGS`.
 Pure data, no logic.
 
-Fields: `showCursorNames`, `showStatusBar`, `showPeerDotsInStatusBar`,
-`showComments`, `showNotifications`.
+Toggle fields: `showCursorNames`, `showStatusBar`, `showPeerDotsInStatusBar`,
+`showComments`, `showNotifications`, `showEditHistory`.
+
+Edit history tuning: `editHistoryRetentionDays` (default 30),
+`editHistoryMaxPerFilePerDay` (default 50), `editHistoryDebounceMs`
+(default 5000 — idle before capture), `editHistoryRebaseInterval`
+(default 10 — deltas between base snapshots). The maxWait companion
+(60s) is hardcoded in `main.ts` and not user-configurable.
 
 ### styles.css -- CSS layer
 
