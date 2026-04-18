@@ -25,4 +25,13 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("a\nb", "HEAD\na\nb");
 		expect(hunks).toEqual([{ s: 0, d: 0, a: ["HEAD"] }]);
 	});
+
+	it("emits one hunk at s=N for appended lines", () => {
+		// diff-match-patch line-mode treats "b" (no trailing newline) as a
+		// distinct token from "b\n", so appending produces a single hunk that
+		// replaces the old last line with [<old last line>, ...appended lines].
+		// Roundtrips cleanly through applyLineHunks.
+		const hunks = computeLineHunks("a\nb", "a\nb\nTAIL");
+		expect(hunks).toEqual([{ s: 1, d: 1, a: ["b", "TAIL"] }]);
+	});
 });
