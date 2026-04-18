@@ -221,4 +221,11 @@ describe("computeDiffSummary", () => {
 			{ s: 5, d: 1, a: [] },
 		])).toEqual({ added: 0, removed: 3 });
 	});
+
+	it("sums mixed adds and deletes", () => {
+		expect(computeDiffSummary([
+			{ s: 0, d: 2, a: ["X"] },
+			{ s: 5, d: 1, a: ["Y", "Z"] },
+		])).toEqual({ added: 3, removed: 3 });
+	});
 });
