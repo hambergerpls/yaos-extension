@@ -1,8 +1,19 @@
+export interface LineHunk {
+	/** 0-indexed line in the reconstructed previous version where deletion starts. */
+	s: number;
+	/** Number of old lines deleted (consumed from previous version starting at `s`). */
+	d: number;
+	/** New lines inserted at position `s` (each entry is one line, no trailing `\n`). */
+	a: string[];
+}
+
 export interface VersionSnapshot {
 	ts: number;
 	device: string;
+	/** Full-text base snapshot. Present on the first version and every rebase. */
 	content?: string;
-	diff?: [number, string][];
+	/** Line-oriented delta against the immediately preceding version. */
+	hunks?: LineHunk[];
 }
 
 export interface FileHistoryEntry {
@@ -12,10 +23,10 @@ export interface FileHistoryEntry {
 }
 
 export interface EditHistoryData {
-	version: number;
+	version: 2;
 	entries: Record<string, FileHistoryEntry>;
 }
 
 export function DEFAULT_EDIT_HISTORY_DATA(): EditHistoryData {
-	return { version: 1, entries: {} };
+	return { version: 2, entries: {} };
 }
