@@ -1,6 +1,6 @@
 import { ItemView } from "obsidian";
 import type { EditHistoryStore } from "./editHistoryStore";
-import { reconstructVersion, computeDiffSummary } from "./editHistoryDiff";
+import { reconstructVersion, computeDiffSummary, computeDiff, type DiffOp } from "./editHistoryDiff";
 import type { FileHistoryEntry, VersionSnapshot } from "./types";
 
 export const EDIT_HISTORY_VIEW_TYPE = "yaos-extension-edit-history";
@@ -17,6 +17,17 @@ function formatTime(ts: number): string {
 
 function getDeviceInitials(name: string): string {
 	return name.split(/[-_\s]/).map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+function truncateByLines(text: string, maxLines: number): { text: string; remainingLines: number } {
+	const lines = text.split("\n");
+	if (lines.length <= maxLines) {
+		return { text, remainingLines: 0 };
+	}
+	return {
+		text: lines.slice(0, maxLines).join("\n"),
+		remainingLines: lines.length - maxLines,
+	};
 }
 
 const SESSION_GAP_MS = 5 * 60 * 1000;
@@ -246,6 +257,8 @@ export class EditHistoryView extends ItemView {
 			summaryEl.textContent = parts.join(" ") + " lines";
 		}
 
+		this.renderDiffContent(el, entry, version, versionIndex);
+
 		const actions = el.createDiv({ cls: "yaos-extension-edit-history-actions" });
 		const restoreBtn = actions.createEl("button", {
 			cls: "yaos-extension-edit-history-restore",
@@ -258,5 +271,58 @@ export class EditHistoryView extends ItemView {
 				this.onRestore(content);
 			}
 		});
+	}
+
+	private renderDiffContent(
+		parent: HTMLElement,
+		entry: FileHistoryEntry,
+		version: VersionSnapshot,
+		versionIndex: number,
+	): void {
+		const container = parent.createDiv({ cls: "yaos-extension-edit-history-diff" });
+
+		if (version.diff) {
+			this.renderDiffOps(container, version.diff);
+			return;
+		}
+
+		if (version.content === undefined) {
+			const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
+			label.textContent = "(diff unavailable)";
+			return;
+		}
+
+		if (versionIndex === 0) {
+			const labelEl = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-label" });
+			labelEl.textContent = "Initial snapshot";
+			const { text, remainingLines } = truncateByLines(version.content, 20);
+			this.renderDiffOps(container, [[1, text]]);
+			if (remainingLines > 0) {
+				const marker = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-truncated" });
+				marker.textContent = `… (${remainingLines} more lines)`;
+			}
+			return;
+		}
+
+		// Mid-chain rebase base: synthesize a diff against the reconstructed previous version
+		const prev = reconstructVersion(entry, versionIndex - 1);
+		if (prev === null) {
+			const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
+			label.textContent = "(diff unavailable)";
+			return;
+		}
+		const synthetic = computeDiff(prev, version.content);
+		this.renderDiffOps(container, synthetic);
+	}
+
+	private renderDiffOps(container: HTMLElement, ops: DiffOp[]): void {
+		for (const [op, text] of ops) {
+			let cls: string;
+			if (op === 1) cls = "yaos-extension-edit-history-diff-add";
+			else if (op === -1) cls = "yaos-extension-edit-history-diff-del";
+			else cls = "yaos-extension-edit-history-diff-retain";
+			const span = container.createSpan({ cls });
+			span.textContent = text;
+		}
 	}
 }
