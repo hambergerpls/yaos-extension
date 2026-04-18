@@ -317,4 +317,19 @@ describe("buildHunks", () => {
 		expect(result[0]!.kind).toBe("hunk");
 		expect((result[0] as any).lines.length).toBe(5);
 	});
+
+	it("trims leading and trailing retains beyond context to skip markers", () => {
+		const lines: DiffLine[] = [];
+		for (let i = 0; i < 5; i++) lines.push({ kind: "retain", text: `lead${i}` });
+		lines.push({ kind: "add", text: "CHANGE" });
+		for (let i = 0; i < 5; i++) lines.push({ kind: "retain", text: `trail${i}` });
+
+		const result = buildHunks(lines, 3);
+		// Expect: skip(2) + hunk(retain×3 + add + retain×3) + skip(2)
+		expect(result.length).toBe(3);
+		expect(result[0]).toEqual({ kind: "skip", count: 2 });
+		expect(result[1]!.kind).toBe("hunk");
+		expect((result[1] as any).lines.length).toBe(7);
+		expect(result[2]).toEqual({ kind: "skip", count: 2 });
+	});
 });
