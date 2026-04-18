@@ -557,6 +557,16 @@ the **newest** version's calendar date so they stay grouped.
 awaited `store.getEntry()` resolves, so only the latest call ever
 mutates the DOM.
 
+Each version entry renders an always-visible inline colored diff below its
+summary line. Versions with stored `diff` ops render directly as colored
+spans (`.diff-add` / `.diff-del` / `.diff-retain`). The initial snapshot
+(`versionIndex === 0`) renders as a single insert-styled block truncated to
+20 lines with a `… (N more lines)` marker when longer. Mid-chain rebase
+bases (`content`-only versions at `versionIndex > 0`) synthesize a diff
+against `reconstructVersion(entry, versionIndex - 1)` and render
+untruncated; if reconstruction returns null, a `.diff-unavailable` fallback
+label renders instead.
+
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
 
 ### utils/debounce.ts -- Trailing-edge debouncer
