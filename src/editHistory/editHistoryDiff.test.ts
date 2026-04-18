@@ -296,4 +296,11 @@ describe("buildHunks", () => {
 		];
 		expect(buildHunks(lines, 3)).toEqual([]);
 	});
+
+	it("emits one hunk for a single add with no surrounding retains", () => {
+		const lines: DiffLine[] = [{ kind: "add", text: "x" }];
+		expect(buildHunks(lines, 3)).toEqual([
+			{ kind: "hunk", lines: [{ kind: "add", text: "x" }] },
+		]);
+	});
 });
