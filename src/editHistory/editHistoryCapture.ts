@@ -1,5 +1,5 @@
 import type { EditHistoryStore } from "./editHistoryStore";
-import { computeDiff, reconstructVersion } from "./editHistoryDiff";
+import { computeLineHunks, reconstructVersion } from "./editHistoryDiff";
 import type { PendingEditsDb } from "./pendingEditsDb";
 import { logWarn } from "../logger";
 
@@ -159,8 +159,8 @@ export class EditHistoryCapture {
 					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content: edit.content });
 					entry.baseIndex = entry.versions.length - 1;
 				} else {
-					const diff = computeDiff(lastContent, edit.content);
-					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), diff });
+					const hunks = computeLineHunks(lastContent, edit.content);
+					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), hunks });
 				}
 				accepted.push(edit.fileId);
 			}
@@ -213,8 +213,8 @@ export class EditHistoryCapture {
 				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content });
 				entry.baseIndex = entry.versions.length - 1;
 			} else {
-				const diff = computeDiff(lastContent, content);
-				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), diff });
+				const hunks = computeLineHunks(lastContent, content);
+				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), hunks });
 			}
 			didAdd = true;
 		});

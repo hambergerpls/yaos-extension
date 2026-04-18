@@ -10,7 +10,7 @@ function makeStore(captured: { calls: any[] }) {
 
 	return {
 		async load(): Promise<EditHistoryData> {
-			return { version: 1, entries };
+			return { version: 2, entries };
 		},
 		async save(data: EditHistoryData): Promise<void> {
 			Object.assign(entries, data.entries);
@@ -41,7 +41,7 @@ function makeStore(captured: { calls: any[] }) {
 			const pre: Record<string, number> = {};
 			for (const [id, e] of Object.entries(entries)) pre[id] = e.versions.length;
 
-			const data: EditHistoryData = { version: 1, entries };
+			const data: EditHistoryData = { version: 2, entries };
 			const result = await fn(data);
 
 			// Record one capture call per newly-appended version
@@ -109,7 +109,7 @@ describe("EditHistoryCapture", () => {
 			expect(captured.calls).toHaveLength(1);
 			expect(captured.calls[0].snap.content).toBe("hello world");
 			expect(captured.calls[0].snap.device).toBe("TestDevice");
-			expect(captured.calls[0].snap.diff).toBeUndefined();
+			expect(captured.calls[0].snap.hunks).toBeUndefined();
 		});
 
 		it("creates a delta version when a previous version exists", async () => {
@@ -119,7 +119,7 @@ describe("EditHistoryCapture", () => {
 			expect(captured.calls).toHaveLength(2);
 			const delta = captured.calls[1].snap;
 			expect(delta.content).toBeUndefined();
-			expect(delta.diff).toBeDefined();
+			expect(delta.hunks).toBeDefined();
 			expect(delta.device).toBe("TestDevice");
 		});
 
@@ -130,14 +130,14 @@ describe("EditHistoryCapture", () => {
 
 			expect(captured.calls).toHaveLength(3);
 			expect(captured.calls[0].snap.content).toBe("v0");
-			expect(captured.calls[1].snap.diff).toBeDefined();
-			expect(captured.calls[2].snap.diff).toBeDefined();
+			expect(captured.calls[1].snap.hunks).toBeDefined();
+			expect(captured.calls[2].snap.hunks).toBeDefined();
 
 			await capture.captureSnapshot("f1", "a.md", "v3");
 
 			expect(captured.calls).toHaveLength(4);
 			expect(captured.calls[3].snap.content).toBe("v3");
-			expect(captured.calls[3].snap.diff).toBeUndefined();
+			expect(captured.calls[3].snap.hunks).toBeUndefined();
 		});
 
 		it("skips capture when content matches last version", async () => {
@@ -527,8 +527,8 @@ describe("EditHistoryCapture", () => {
 				fastCapture.scheduleCapture("f1", "a.md", "burst2");
 				await sleep(80); // idle fires again at ~30ms after burst2 starts
 				expect(captured.calls).toHaveLength(2);
-				// Delta snapshots have `diff` instead of `content`
-				expect(captured.calls[1].snap.diff).toBeDefined();
+				// Delta snapshots have `hunks` instead of `content`
+				expect(captured.calls[1].snap.hunks).toBeDefined();
 			} finally {
 				fastCapture.stop();
 				await fastDb.clear();
@@ -658,7 +658,7 @@ describe("EditHistoryCapture", () => {
 				},
 				async addVersion() { throw new Error("disk full"); },
 				async addVersions() { throw new Error("disk full"); },
-				async load() { return { version: 1, entries: {} }; },
+				async load() { return { version: 2, entries: {} }; },
 				async save() { throw new Error("disk full"); },
 			} as any as EditHistoryStore;
 
