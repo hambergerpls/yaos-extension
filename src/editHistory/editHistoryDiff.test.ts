@@ -199,4 +199,12 @@ describe("segmentLines", () => {
 		const result = segmentLines([[0, "a\n"]]);
 		expect(result).toEqual([{ kind: "retain", text: "a" }]);
 	});
+
+	it("emits retain then add for insert at end of line", () => {
+		const result = segmentLines([[0, "old\n"], [1, "new"]]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "old" },
+			{ kind: "add", text: "new" },
+		]);
+	});
 });
