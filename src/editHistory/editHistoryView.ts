@@ -63,6 +63,7 @@ export class EditHistoryView extends ItemView {
 	private store: EditHistoryStore;
 	private onRestore: (content: string) => void;
 	private expandedSessions: Set<string> = new Set();
+	private refreshGeneration = 0;
 
 	constructor(leaf: any, store: EditHistoryStore, onRestore: (content: string) => void) {
 		super(leaf);
@@ -87,14 +88,19 @@ export class EditHistoryView extends ItemView {
 	async onClose(): Promise<void> {}
 
 	async refresh(fileId: string | null): Promise<void> {
-		this.contentEl.empty();
+		const gen = ++this.refreshGeneration;
 
 		if (!fileId) {
+			if (gen !== this.refreshGeneration) return;
+			this.contentEl.empty();
 			this.renderEmpty("No file selected");
 			return;
 		}
 
 		const entry = await this.store.getEntry(fileId);
+		if (gen !== this.refreshGeneration) return;
+
+		this.contentEl.empty();
 		if (!entry || entry.versions.length === 0) {
 			this.renderEmpty("No edit history for this file");
 			return;
