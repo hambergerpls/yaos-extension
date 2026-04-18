@@ -640,5 +640,57 @@ describe("EditHistoryView", () => {
 			);
 			expect(marker).toBeNull();
 		});
+
+		it("mid-chain rebase base synthesizes diff against reconstructed previous (untruncated)", async () => {
+			// v0 = "hello"
+			// v1 = "hello world" (delta)
+			// v2 = "hello universe" (mid-chain rebase base, stored as full content)
+			const entry: FileHistoryEntry = {
+				path: "notes/rebase.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DevA", content: "hello" },
+					{ ts: 2000, device: "DevA", diff: [[0, "hello"], [1, " world"]] },
+					{ ts: 3000, device: "DevA", content: "hello universe" },
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			// Newest-first walk: v2 is the first entry rendered.
+			const entries = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-entry",
+			);
+			expect(entries.length).toBe(3);
+
+			const v2Diff = entries[0]!.querySelector(
+				".yaos-extension-edit-history-diff",
+			);
+			expect(v2Diff).not.toBeNull();
+
+			// Must have at least one add span (inserting " universe") and
+			// at least one del span (removing " world").
+			const adds = v2Diff!.querySelectorAll(".yaos-extension-edit-history-diff-add");
+			const dels = v2Diff!.querySelectorAll(".yaos-extension-edit-history-diff-del");
+			expect(adds.length).toBeGreaterThan(0);
+			expect(dels.length).toBeGreaterThan(0);
+
+			// The combined content of all spans within the diff container must
+			// equal the NEW content "hello universe" when concatenating op === 0
+			// and op === 1 spans (per applyDiff semantics).
+			const retainAndAdd = v2Diff!.querySelectorAll(
+				".yaos-extension-edit-history-diff-retain, .yaos-extension-edit-history-diff-add",
+			);
+			const reconstructed = Array.from(retainAndAdd).map(s => s.textContent).join("");
+			expect(reconstructed).toBe("hello universe");
+
+			// No initial-label on v2 (it's not versionIndex 0).
+			const label = v2Diff!.querySelector(
+				".yaos-extension-edit-history-diff-initial-label",
+			);
+			expect(label).toBeNull();
+		});
 	});
 });
