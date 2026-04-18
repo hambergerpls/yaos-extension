@@ -80,15 +80,27 @@ export class EditHistoryCapture {
 		});
 
 		const existing = this.pendingTimers.get(fileId);
-		if (existing) clearTimeout(existing.idle);
 
+		// Always reset the idle timer
+		if (existing) clearTimeout(existing.idle);
 		const idle = setTimeout(() => this.fireCapture(fileId), this.settings.debounceMs);
 
-		this.pendingTimers.set(fileId, {
-			idle,
-			max: existing?.max ?? null,
-			firstScheduledAt: existing?.firstScheduledAt ?? Date.now(),
-		});
+		if (existing) {
+			// Mid-burst: keep the existing max timer and firstScheduledAt intact
+			this.pendingTimers.set(fileId, {
+				idle,
+				max: existing.max,
+				firstScheduledAt: existing.firstScheduledAt,
+			});
+		} else {
+			// First edit in a new burst: arm the max timer
+			const max = setTimeout(() => this.fireCapture(fileId), this.settings.maxWaitMs);
+			this.pendingTimers.set(fileId, {
+				idle,
+				max,
+				firstScheduledAt: Date.now(),
+			});
+		}
 	}
 
 	private fireCapture(fileId: string): void {
