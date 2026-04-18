@@ -185,4 +185,13 @@ describe("segmentLines", () => {
 		const result: DiffLine[] = segmentLines([[0, "hello"]]);
 		expect(result).toEqual([{ kind: "retain", text: "hello" }]);
 	});
+
+	it("splits a multi-line retain into per-line rows", () => {
+		const result = segmentLines([[0, "a\nb\nc"]]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "a" },
+			{ kind: "retain", text: "b" },
+			{ kind: "retain", text: "c" },
+		]);
+	});
 });
