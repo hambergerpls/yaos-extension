@@ -915,3 +915,50 @@
   border-left: 2px solid var(--background-modifier-border);
   padding-left: 8px;
 }
+
+/* Edit history — inline diff */
+
+.yaos-extension-edit-history-diff {
+	padding: 4px 8px 4px 32px;
+	margin-top: 4px;
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: var(--background-secondary);
+	border-radius: 4px;
+}
+
+.yaos-extension-edit-history-diff-add {
+	background: rgba(var(--color-green-rgb), 0.2);
+	color: var(--text-normal);
+}
+
+.yaos-extension-edit-history-diff-del {
+	background: rgba(var(--color-red-rgb), 0.2);
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+
+.yaos-extension-edit-history-diff-retain {
+	color: var(--text-muted);
+}
+
+.yaos-extension-edit-history-diff-initial-label {
+	display: block;
+	margin-bottom: 4px;
+	font-style: italic;
+	color: var(--text-faint);
+}
+
+.yaos-extension-edit-history-diff-initial-truncated {
+	display: block;
+	margin-top: 4px;
+	font-style: italic;
+	color: var(--text-faint);
+}
+
+.yaos-extension-edit-history-diff-unavailable {
+	font-style: italic;
+	color: var(--text-faint);
+}
