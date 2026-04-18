@@ -183,4 +183,12 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 5)).toBeNull();
 	});
+
+	it("returns null when base has no content (corrupt chain)", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md", baseIndex: 0,
+			versions: [{ ts: 1, device: "d", hunks: [{ s: 0, d: 0, a: ["x"] }] }],
+		};
+		expect(reconstructVersion(entry, 0)).toBeNull();
+	});
 });
