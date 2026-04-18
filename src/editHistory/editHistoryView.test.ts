@@ -530,7 +530,7 @@ describe("EditHistoryView", () => {
 	});
 
 	describe("inline diff rendering", () => {
-		it("renders version.diff as classed add/del/retain spans", async () => {
+		it("renders version.diff as hunk rows with del/add pair", async () => {
 			const entry: FileHistoryEntry = {
 				path: "notes/x.md",
 				baseIndex: 0,
@@ -548,32 +548,19 @@ describe("EditHistoryView", () => {
 			await view.onOpen();
 			await view.refresh("f1");
 
-			const addSpans = view.contentEl.querySelectorAll(
-				".yaos-extension-edit-history-diff-add",
-			);
-			const delSpans = view.contentEl.querySelectorAll(
-				".yaos-extension-edit-history-diff-del",
-			);
-			const retainSpans = view.contentEl.querySelectorAll(
-				".yaos-extension-edit-history-diff-retain",
-			);
+			const entries = view.contentEl.querySelectorAll(".yaos-extension-edit-history-entry");
+			// entries[0] is newest (the diff version)
+			const hunkDiff = entries[0]!.querySelector(".yaos-extension-edit-history-diff")!;
 
-			// At least one of each type appears across the entries
-			expect(addSpans.length).toBeGreaterThan(0);
-			expect(delSpans.length).toBeGreaterThan(0);
-			expect(retainSpans.length).toBeGreaterThan(0);
+			const delRows = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-del-line");
+			const addRows = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
+			expect(delRows.length).toBe(1);
+			expect(addRows.length).toBe(1);
 
-			// Check the specific diff-version row contains the insert text "y there"
-			const insertTexts = Array.from(addSpans).map(s => s.textContent);
-			expect(insertTexts).toContain("y there");
-
-			// Check the specific deletion "llo"
-			const deleteTexts = Array.from(delSpans).map(s => s.textContent);
-			expect(deleteTexts).toContain("llo");
-
-			// Retain "he"
-			const retainTexts = Array.from(retainSpans).map(s => s.textContent);
-			expect(retainTexts).toContain("he");
+			const delText = delRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent;
+			const addText = addRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent;
+			expect(delText).toBe("hello");
+			expect(addText).toBe("hey there");
 		});
 
 		it("initial version (> 20 lines) renders truncated add span + marker", async () => {
@@ -641,7 +628,7 @@ describe("EditHistoryView", () => {
 			expect(marker).toBeNull();
 		});
 
-		it("mid-chain rebase base synthesizes diff against reconstructed previous (untruncated)", async () => {
+		it("mid-chain rebase base synthesizes diff as hunk rows against reconstructed previous", async () => {
 			// v0 = "hello"
 			// v1 = "hello world" (delta)
 			// v2 = "hello universe" (mid-chain rebase base, stored as full content)
@@ -659,37 +646,25 @@ describe("EditHistoryView", () => {
 			await view.onOpen();
 			await view.refresh("f1");
 
-			// Newest-first walk: v2 is the first entry rendered.
-			const entries = view.contentEl.querySelectorAll(
-				".yaos-extension-edit-history-entry",
-			);
+			const entries = view.contentEl.querySelectorAll(".yaos-extension-edit-history-entry");
 			expect(entries.length).toBe(3);
 
-			const v2Diff = entries[0]!.querySelector(
-				".yaos-extension-edit-history-diff",
-			);
-			expect(v2Diff).not.toBeNull();
+			// Newest-first walk: v2 is entries[0].
+			const v2Diff = entries[0]!.querySelector(".yaos-extension-edit-history-diff")!;
 
-			// Must have at least one add span (inserting " universe") and
-			// at least one del span (removing " world").
-			const adds = v2Diff!.querySelectorAll(".yaos-extension-edit-history-diff-add");
-			const dels = v2Diff!.querySelectorAll(".yaos-extension-edit-history-diff-del");
-			expect(adds.length).toBeGreaterThan(0);
-			expect(dels.length).toBeGreaterThan(0);
+			// v2's synthetic diff is "hello world" → "hello universe": one line substitution.
+			const delRows = v2Diff.querySelectorAll(".yaos-extension-edit-history-diff-del-line");
+			const addRows = v2Diff.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
+			expect(delRows.length).toBe(1);
+			expect(addRows.length).toBe(1);
 
-			// The combined content of all spans within the diff container must
-			// equal the NEW content "hello universe" when concatenating op === 0
-			// and op === 1 spans (per applyDiff semantics).
-			const retainAndAdd = v2Diff!.querySelectorAll(
-				".yaos-extension-edit-history-diff-retain, .yaos-extension-edit-history-diff-add",
-			);
-			const reconstructed = Array.from(retainAndAdd).map(s => s.textContent).join("");
-			expect(reconstructed).toBe("hello universe");
+			const delText = delRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent;
+			const addText = addRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent;
+			expect(delText).toBe("hello world");
+			expect(addText).toBe("hello universe");
 
 			// No initial-label on v2 (it's not versionIndex 0).
-			const label = v2Diff!.querySelector(
-				".yaos-extension-edit-history-diff-initial-label",
-			);
+			const label = v2Diff.querySelector(".yaos-extension-edit-history-diff-initial-label");
 			expect(label).toBeNull();
 		});
 

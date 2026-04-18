@@ -1,6 +1,14 @@
 import { ItemView } from "obsidian";
 import type { EditHistoryStore } from "./editHistoryStore";
-import { reconstructVersion, computeDiffSummary, computeDiff, type DiffOp } from "./editHistoryDiff";
+import {
+	reconstructVersion,
+	computeDiffSummary,
+	computeDiff,
+	segmentLines,
+	buildHunks,
+	DEFAULT_CONTEXT_LINES,
+	type DiffOp,
+} from "./editHistoryDiff";
 import type { FileHistoryEntry, VersionSnapshot } from "./types";
 
 export const EDIT_HISTORY_VIEW_TYPE = "yaos-extension-edit-history";
@@ -282,7 +290,7 @@ export class EditHistoryView extends ItemView {
 		const container = parent.createDiv({ cls: "yaos-extension-edit-history-diff" });
 
 		if (version.diff) {
-			this.renderDiffOps(container, version.diff);
+			this.renderHunks(container, version.diff);
 			return;
 		}
 
@@ -312,7 +320,7 @@ export class EditHistoryView extends ItemView {
 			return;
 		}
 		const synthetic = computeDiff(prev, version.content);
-		this.renderDiffOps(container, synthetic);
+		this.renderHunks(container, synthetic);
 	}
 
 	private renderDiffOps(container: HTMLElement, ops: DiffOp[]): void {
@@ -323,6 +331,38 @@ export class EditHistoryView extends ItemView {
 			else cls = "yaos-extension-edit-history-diff-retain";
 			const span = container.createSpan({ cls });
 			span.textContent = text;
+		}
+	}
+
+	private renderHunks(container: HTMLElement, ops: DiffOp[]): void {
+		const lines = segmentLines(ops);
+		const items = buildHunks(lines, DEFAULT_CONTEXT_LINES);
+		for (const item of items) {
+			if (item.kind === "skip") {
+				const skipEl = container.createDiv({ cls: "yaos-extension-edit-history-diff-hunk-skip" });
+				skipEl.textContent = `… ${item.count} unchanged lines`;
+				continue;
+			}
+			const hunkEl = container.createDiv({ cls: "yaos-extension-edit-history-diff-hunk" });
+			for (const line of item.lines) {
+				let lineCls: string;
+				let gutterChar: string;
+				if (line.kind === "retain") {
+					lineCls = "yaos-extension-edit-history-diff-retain-line";
+					gutterChar = " ";
+				} else if (line.kind === "add") {
+					lineCls = "yaos-extension-edit-history-diff-add-line";
+					gutterChar = "+";
+				} else {
+					lineCls = "yaos-extension-edit-history-diff-del-line";
+					gutterChar = "-";
+				}
+				const rowEl = hunkEl.createDiv({ cls: `yaos-extension-edit-history-diff-line ${lineCls}` });
+				const gutter = rowEl.createSpan({ cls: "yaos-extension-edit-history-diff-gutter" });
+				gutter.textContent = gutterChar;
+				const textEl = rowEl.createSpan({ cls: "yaos-extension-edit-history-diff-line-text" });
+				textEl.textContent = line.text;
+			}
 		}
 	}
 }
