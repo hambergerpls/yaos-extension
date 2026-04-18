@@ -14,16 +14,16 @@ describe("VersionSnapshot", () => {
 			content: "# Full content",
 		};
 		expect(snap.content).toBe("# Full content");
-		expect(snap.diff).toBeUndefined();
+		expect(snap.hunks).toBeUndefined();
 	});
 
-	it("can hold a delta version with diff ops", () => {
+	it("can hold a delta version with line hunks", () => {
 		const snap: VersionSnapshot = {
 			ts: 1713123800000,
 			device: "Bob-Phone",
-			diff: [[1, "added text\n"], [-3, ""]],
+			hunks: [{ s: 0, d: 0, a: ["added text"] }],
 		};
-		expect(snap.diff).toEqual([[1, "added text\n"], [-3, ""]]);
+		expect(snap.hunks).toEqual([{ s: 0, d: 0, a: ["added text"] }]);
 		expect(snap.content).toBeUndefined();
 	});
 });
@@ -46,16 +46,16 @@ describe("FileHistoryEntry", () => {
 describe("EditHistoryData", () => {
 	it("has version and entries map", () => {
 		const data: EditHistoryData = {
-			version: 1,
+			version: 2,
 			entries: {},
 		};
-		expect(data.version).toBe(1);
+		expect(data.version).toBe(2);
 		expect(Object.keys(data.entries)).toHaveLength(0);
 	});
 
 	it("maps file IDs to FileHistoryEntry", () => {
 		const data: EditHistoryData = {
-			version: 1,
+			version: 2,
 			entries: {
 				"abc123": {
 					path: "notes/test.md",
@@ -72,9 +72,9 @@ describe("EditHistoryData", () => {
 });
 
 describe("DEFAULT_EDIT_HISTORY_DATA", () => {
-	it("returns a fresh empty EditHistoryData with version 1", () => {
+	it("returns a fresh empty EditHistoryData with version 2", () => {
 		const data = DEFAULT_EDIT_HISTORY_DATA();
-		expect(data).toEqual({ version: 1, entries: {} });
+		expect(data).toEqual({ version: 2, entries: {} });
 	});
 
 	it("returns a new object each call (no shared mutation)", () => {

@@ -3,13 +3,12 @@ import type { EditHistoryStore } from "./editHistoryStore";
 import {
 	reconstructVersion,
 	computeDiffSummary,
-	computeDiff,
-	segmentLines,
+	computeLineHunks,
 	buildHunks,
 	DEFAULT_CONTEXT_LINES,
-	type DiffOp,
+	type DiffLine,
 } from "./editHistoryDiff";
-import type { FileHistoryEntry, VersionSnapshot } from "./types";
+import type { FileHistoryEntry, LineHunk, VersionSnapshot } from "./types";
 
 export const EDIT_HISTORY_VIEW_TYPE = "yaos-extension-edit-history";
 
@@ -195,8 +194,8 @@ export class EditHistoryView extends ItemView {
 		let addedTotal = 0;
 		let removedTotal = 0;
 		for (const { version } of session.versions) {
-			if (version.diff) {
-				const sum = computeDiffSummary(version.diff);
+			if (version.hunks) {
+				const sum = computeDiffSummary(version.hunks);
 				addedTotal += sum.added;
 				removedTotal += sum.removed;
 			}
@@ -256,8 +255,8 @@ export class EditHistoryView extends ItemView {
 		const timeEl = topRow.createSpan({ cls: "yaos-extension-edit-history-time" });
 		timeEl.textContent = formatTime(version.ts);
 
-		if (version.diff) {
-			const summary = computeDiffSummary(version.diff);
+		if (version.hunks) {
+			const summary = computeDiffSummary(version.hunks);
 			const summaryEl = el.createDiv({ cls: "yaos-extension-edit-history-summary" });
 			const parts: string[] = [];
 			if (summary.added > 0) parts.push(`+${summary.added}`);
@@ -289,8 +288,14 @@ export class EditHistoryView extends ItemView {
 	): void {
 		const container = parent.createDiv({ cls: "yaos-extension-edit-history-diff" });
 
-		if (version.diff) {
-			this.renderHunks(container, version.diff);
+		if (version.hunks) {
+			const prev = reconstructVersion(entry, versionIndex - 1);
+			if (prev === null) {
+				const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
+				label.textContent = "(diff unavailable)";
+				return;
+			}
+			this.renderLineHunks(container, prev, version.hunks);
 			return;
 		}
 
@@ -304,7 +309,9 @@ export class EditHistoryView extends ItemView {
 			const labelEl = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-label" });
 			labelEl.textContent = "Initial snapshot";
 			const { text, remainingLines } = truncateByLines(version.content, 20);
-			this.renderDiffOps(container, [[1, text]]);
+			// Initial snapshot renders as a single add span (unchanged from prior behavior).
+			const addSpan = container.createSpan({ cls: "yaos-extension-edit-history-diff-add" });
+			addSpan.textContent = text;
 			if (remainingLines > 0) {
 				const marker = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-truncated" });
 				marker.textContent = `… (${remainingLines} more lines)`;
@@ -312,31 +319,42 @@ export class EditHistoryView extends ItemView {
 			return;
 		}
 
-		// Mid-chain rebase base: synthesize a diff against the reconstructed previous version
+		// Mid-chain rebase base: synthesize line-hunks against reconstructed previous.
 		const prev = reconstructVersion(entry, versionIndex - 1);
 		if (prev === null) {
 			const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
 			label.textContent = "(diff unavailable)";
 			return;
 		}
-		const synthetic = computeDiff(prev, version.content);
-		this.renderHunks(container, synthetic);
+		const synthetic = computeLineHunks(prev, version.content);
+		this.renderLineHunks(container, prev, synthetic);
 	}
 
-	private renderDiffOps(container: HTMLElement, ops: DiffOp[]): void {
-		for (const [op, text] of ops) {
-			let cls: string;
-			if (op === 1) cls = "yaos-extension-edit-history-diff-add";
-			else if (op === -1) cls = "yaos-extension-edit-history-diff-del";
-			else cls = "yaos-extension-edit-history-diff-retain";
-			const span = container.createSpan({ cls });
-			span.textContent = text;
+	private renderLineHunks(
+		container: HTMLElement,
+		prevContent: string,
+		hunks: LineHunk[],
+	): void {
+		const prevLines = prevContent === "" ? [] : prevContent.split("\n");
+		const diffLines: DiffLine[] = [];
+		let cursor = 0;
+		for (const h of hunks) {
+			for (let i = cursor; i < h.s; i++) {
+				diffLines.push({ kind: "retain", text: prevLines[i] ?? "" });
+			}
+			for (let i = h.s; i < h.s + h.d; i++) {
+				diffLines.push({ kind: "del", text: prevLines[i] ?? "" });
+			}
+			for (const line of h.a) {
+				diffLines.push({ kind: "add", text: line });
+			}
+			cursor = h.s + h.d;
 		}
-	}
+		for (let i = cursor; i < prevLines.length; i++) {
+			diffLines.push({ kind: "retain", text: prevLines[i]! });
+		}
 
-	private renderHunks(container: HTMLElement, ops: DiffOp[]): void {
-		const lines = segmentLines(ops);
-		const items = buildHunks(lines, DEFAULT_CONTEXT_LINES);
+		const items = buildHunks(diffLines, DEFAULT_CONTEXT_LINES);
 		for (const item of items) {
 			if (item.kind === "skip") {
 				const skipEl = container.createDiv({ cls: "yaos-extension-edit-history-diff-hunk-skip" });
