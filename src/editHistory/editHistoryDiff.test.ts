@@ -214,4 +214,11 @@ describe("computeDiffSummary", () => {
 			{ s: 10, d: 0, a: ["c"] },
 		])).toEqual({ added: 3, removed: 0 });
 	});
+
+	it("sums deletes across hunks", () => {
+		expect(computeDiffSummary([
+			{ s: 0, d: 2, a: [] },
+			{ s: 5, d: 1, a: [] },
+		])).toEqual({ added: 0, removed: 3 });
+	});
 });
