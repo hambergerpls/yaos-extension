@@ -81,4 +81,8 @@ describe("applyLineHunks", () => {
 	it("produces full content from empty base", () => {
 		expect(applyLineHunks("", [{ s: 0, d: 0, a: ["a", "b", "c"] }])).toBe("a\nb\nc");
 	});
+
+	it("produces empty string when all lines are deleted", () => {
+		expect(applyLineHunks("a\nb\nc", [{ s: 0, d: 3, a: [] }])).toBe("");
+	});
 });
