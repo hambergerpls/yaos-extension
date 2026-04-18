@@ -79,8 +79,11 @@ export class CommentRenderer {
   }
 
   async refresh(container: HTMLElement, filePath: string): Promise<void> {
+    const gen = ++this.renderGeneration;
     this.loadDraft(filePath);
-    this.threads = await this.store.getThreadsForFile(filePath);
+    const next = await this.store.getThreadsForFile(filePath);
+    if (gen !== this.renderGeneration) return;
+    this.threads = next;
     this.container = container;
     this.renderAll(container);
   }
