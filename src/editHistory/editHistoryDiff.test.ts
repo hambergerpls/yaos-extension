@@ -251,4 +251,18 @@ describe("segmentLines", () => {
 			{ kind: "retain", text: "b" },
 		]);
 	});
+
+	it("splits a multi-line delete into per-line del rows", () => {
+		const result = segmentLines([
+			[0, "a\n"],
+			[-1, "x\ny\n"],
+			[0, "b"],
+		]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "a" },
+			{ kind: "del", text: "x" },
+			{ kind: "del", text: "y" },
+			{ kind: "retain", text: "b" },
+		]);
+	});
 });
