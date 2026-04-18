@@ -22,6 +22,7 @@ import { EditHistoryStore } from "./editHistory/editHistoryStore";
 import { EditHistoryCapture } from "./editHistory/editHistoryCapture";
 import { EditHistoryView, EDIT_HISTORY_VIEW_TYPE } from "./editHistory/editHistoryView";
 import { PendingEditsDb } from "./editHistory/pendingEditsDb";
+import { createDebouncer } from "./utils/debounce";
 
 export default class YaosExtensionPlugin extends Plugin {
   settings: YaosExtensionSettings = DEFAULT_SETTINGS;
@@ -36,6 +37,9 @@ export default class YaosExtensionPlugin extends Plugin {
   editHistoryStore: EditHistoryStore | null = null;
   editHistoryCapture: EditHistoryCapture | null = null;
   pendingEditsDb: PendingEditsDb | null = null;
+  private debouncedCommentRefresh = createDebouncer(50);
+  private debouncedEditHistoryRefresh = createDebouncer(50);
+  private debouncedNotificationsRefresh = createDebouncer(50);
 
   async onload() {
     await this.loadSettings();
@@ -366,19 +370,21 @@ export default class YaosExtensionPlugin extends Plugin {
   }
 
   private async refreshCommentView(): Promise<void> {
-    const filePath = this.getActiveFilePath();
-    if (!filePath) return;
+    return this.debouncedCommentRefresh(async () => {
+      const filePath = this.getActiveFilePath();
+      if (!filePath) return;
 
-    if (this.inlinePanel) {
-      await this.inlinePanel.refresh(filePath);
-    }
-
-    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
-    for (const leaf of leaves) {
-      if (leaf.view instanceof CommentView) {
-        await leaf.view.refresh(filePath);
+      if (this.inlinePanel) {
+        await this.inlinePanel.refresh(filePath);
       }
-    }
+
+      const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+      for (const leaf of leaves) {
+        if (leaf.view instanceof CommentView) {
+          await leaf.view.refresh(filePath);
+        }
+      }
+    });
   }
 
   private async toggleCommentSidebar(): Promise<void> {
@@ -438,20 +444,22 @@ export default class YaosExtensionPlugin extends Plugin {
   }
 
   private async refreshEditHistoryView(): Promise<void> {
-    const leaves = this.app.workspace.getLeavesOfType(EDIT_HISTORY_VIEW_TYPE);
-    if (leaves.length === 0) return;
+    return this.debouncedEditHistoryRefresh(async () => {
+      const leaves = this.app.workspace.getLeavesOfType(EDIT_HISTORY_VIEW_TYPE);
+      if (leaves.length === 0) return;
 
-    const activePath = this.getActiveFilePath();
-    let fileId: string | null = null;
-    if (activePath) {
-      fileId = getFileId(this.app, activePath) ?? null;
-    }
-
-    for (const leaf of leaves) {
-      if (leaf.view instanceof EditHistoryView) {
-        await leaf.view.refresh(fileId);
+      const activePath = this.getActiveFilePath();
+      let fileId: string | null = null;
+      if (activePath) {
+        fileId = getFileId(this.app, activePath) ?? null;
       }
-    }
+
+      for (const leaf of leaves) {
+        if (leaf.view instanceof EditHistoryView) {
+          await leaf.view.refresh(fileId);
+        }
+      }
+    });
   }
 
   private async handleRestoreVersion(content: string): Promise<void> {
@@ -464,24 +472,26 @@ export default class YaosExtensionPlugin extends Plugin {
   }
 
   private async refreshNotifications(): Promise<void> {
-    const localName = getLocalDeviceName(this.app);
-    const unreadCount = await this.notificationStore?.getUnreadCount(localName);
-    log("refreshNotifications: localName=%s unreadCount=%s", localName, unreadCount);
+    return this.debouncedNotificationsRefresh(async () => {
+      const localName = getLocalDeviceName(this.app);
+      const unreadCount = await this.notificationStore?.getUnreadCount(localName);
+      log("refreshNotifications: localName=%s unreadCount=%s", localName, unreadCount);
 
-    const leaves = this.app.workspace.getLeavesOfType(NOTIFICATIONS_VIEW_TYPE);
-    for (const leaf of leaves) {
-      if (leaf.view instanceof NotificationView) {
-        await leaf.view.refresh();
+      const leaves = this.app.workspace.getLeavesOfType(NOTIFICATIONS_VIEW_TYPE);
+      for (const leaf of leaves) {
+        if (leaf.view instanceof NotificationView) {
+          await leaf.view.refresh();
+        }
       }
-    }
 
-    if (this.tracker?.isReady) {
-      const awareness = this.tracker.currentAwareness;
-      if (awareness) {
-        const peers = getRemotePeers(awareness);
-        this.statusBar?.update(peers, isYaosConnected(this.app), localName, unreadCount);
+      if (this.tracker?.isReady) {
+        const awareness = this.tracker.currentAwareness;
+        if (awareness) {
+          const peers = getRemotePeers(awareness);
+          this.statusBar?.update(peers, isYaosConnected(this.app), localName, unreadCount);
+        }
       }
-    }
+    });
   }
 
   private async handleAddComment(text: string): Promise<void> {
