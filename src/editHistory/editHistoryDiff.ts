@@ -9,10 +9,35 @@ export interface DiffSummary {
 }
 
 export function computeLineHunks(oldContent: string, newContent: string): LineHunk[] {
+	// Work in the "split on \n" line convention so trailing-newline differences
+	// round-trip correctly: "a\n".split("\n") === ["a", ""] is the canonical
+	// line array. We hash each unique line to a single Unicode char and run
+	// dmp.diff_main on the hashed strings (dmp's built-in diff_linesToChars_
+	// keeps the "\n" attached to each line, which collapses "a" vs "a\n" into
+	// a single token and corrupts trailing-newline semantics).
+	const oldLines = oldContent === "" ? [] : oldContent.split("\n");
+	const newLines = newContent === "" ? [] : newContent.split("\n");
+
+	const lineMap = new Map<string, string>();
+	const lineArray: string[] = [];
+	const encode = (lines: string[]): string => {
+		let result = "";
+		for (const line of lines) {
+			let ch = lineMap.get(line);
+			if (ch === undefined) {
+				ch = String.fromCharCode(lineArray.length + 1);
+				lineMap.set(line, ch);
+				lineArray.push(line);
+			}
+			result += ch;
+		}
+		return result;
+	};
+	const oldHash = encode(oldLines);
+	const newHash = encode(newLines);
+
 	const dmp: any = new (DiffMatchPatch as any)();
-	const conv = dmp.diff_linesToChars_(oldContent, newContent);
-	const diffs = dmp.diff_main(conv.chars1, conv.chars2, false);
-	dmp.diff_charsToLines_(diffs, conv.lineArray);
+	const diffs = dmp.diff_main(oldHash, newHash, false);
 
 	const hunks: LineHunk[] = [];
 	let oldLineCursor = 0;
@@ -20,9 +45,9 @@ export function computeLineHunks(oldContent: string, newContent: string): LineHu
 
 	while (i < diffs.length) {
 		const [op, text] = diffs[i] as [number, string];
-		// Retain: just advance the cursor.
+		// Retain: just advance the cursor (one char == one line in hashed form).
 		if (op === 0) {
-			oldLineCursor += countLinesInChunk(text);
+			oldLineCursor += text.length;
 			i++;
 			continue;
 		}
@@ -33,9 +58,9 @@ export function computeLineHunks(oldContent: string, newContent: string): LineHu
 		while (i < diffs.length && (diffs[i]![0] === -1 || diffs[i]![0] === 1)) {
 			const [op2, text2] = diffs[i] as [number, string];
 			if (op2 === -1) {
-				deleted += countLinesInChunk(text2);
+				deleted += text2.length;
 			} else {
-				for (const line of splitIntoLines(text2)) added.push(line);
+				for (const ch of text2) added.push(lineArray[ch.charCodeAt(0) - 1]!);
 			}
 			i++;
 		}
@@ -44,34 +69,6 @@ export function computeLineHunks(oldContent: string, newContent: string): LineHu
 	}
 
 	return hunks;
-}
-
-/**
- * Count how many *lines* are in a multi-line chunk returned by
- * diff_charsToLines_. The chunk is a concatenation of full lines,
- * each ending in "\n" — EXCEPT possibly the final line if the source
- * had no trailing newline.
- *
- * Example: "a\nb\n" → 2 lines. "a\nb" → 2 lines. "" → 0 lines.
- */
-function countLinesInChunk(text: string): number {
-	if (text.length === 0) return 0;
-	let n = 0;
-	for (const ch of text) if (ch === "\n") n++;
-	if (!text.endsWith("\n")) n++;
-	return n;
-}
-
-/**
- * Split a multi-line chunk into individual line strings without trailing "\n".
- * "a\nb\n" → ["a", "b"]. "a\nb" → ["a", "b"]. "" → [].
- */
-function splitIntoLines(text: string): string[] {
-	if (text.length === 0) return [];
-	const parts = text.split("\n");
-	// If the chunk ends in "\n", split produces a trailing "" we drop.
-	if (text.endsWith("\n")) parts.pop();
-	return parts;
 }
 
 export function applyLineHunks(base: string, hunks: LineHunk[]): string {

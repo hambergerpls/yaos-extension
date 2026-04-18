@@ -27,12 +27,8 @@ describe("computeLineHunks", () => {
 	});
 
 	it("emits one hunk at s=N for appended lines", () => {
-		// diff-match-patch line-mode treats "b" (no trailing newline) as a
-		// distinct token from "b\n", so appending produces a single hunk that
-		// replaces the old last line with [<old last line>, ...appended lines].
-		// Roundtrips cleanly through applyLineHunks.
 		const hunks = computeLineHunks("a\nb", "a\nb\nTAIL");
-		expect(hunks).toEqual([{ s: 1, d: 1, a: ["b", "TAIL"] }]);
+		expect(hunks).toEqual([{ s: 2, d: 0, a: ["TAIL"] }]);
 	});
 
 	it("emits a d>0, a=[] hunk for a pure deletion", () => {
@@ -96,4 +92,36 @@ describe("applyLineHunks", () => {
 		);
 		expect(result).toBe("A\nb\nc\nd\nE");
 	});
+});
+
+describe("computeLineHunks + applyLineHunks roundtrip", () => {
+	const cases: Array<[string, string]> = [
+		["", ""],
+		["a", "a"],
+		["a\nb\nc", "a\nb\nc"],
+		["", "hello"],
+		["hello", ""],
+		["", "a\nb\nc"],
+		["a\nb\nc", ""],
+		["a\nb\nc", "a\nX\nc"],
+		["a\nb\nc", "a\nb\nc\nd"],
+		["a\nb\nc", "HEAD\na\nb\nc"],
+		["a\nb\nc\nd\ne", "A\nb\nc\nd\nE"],
+		["one\ntwo\nthree", "one\ntwo\nthree\nfour\nfive"],
+		["alpha\nbeta\ngamma", "alpha\ngamma"],
+		["a\nb", "x\ny"],
+		["line1\nline2\nline3\n", "line1\nMODIFIED\nline3\n"],
+		["trailing\n", "trailing\nextra\n"],
+		["no-trailing", "no-trailing\n"],
+		["with-trailing\n", "without-trailing"],
+		["a\n\nb", "a\nc\nb"],
+		["a\nb\nc\nd\ne\nf\ng\nh", "a\nB\nc\nd\ne\nf\ng\nH"],
+	];
+
+	for (const [old, next] of cases) {
+		it(`roundtrips ${JSON.stringify(old)} → ${JSON.stringify(next)}`, () => {
+			const hunks = computeLineHunks(old, next);
+			expect(applyLineHunks(old, hunks)).toBe(next);
+		});
+	}
 });
