@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EditHistoryView, EDIT_HISTORY_VIEW_TYPE } from "./editHistoryView";
 import { EditHistoryStore } from "./editHistoryStore";
 import type { FileHistoryEntry } from "./types";
-import { computeDiff } from "./editHistoryDiff";
+import { computeLineHunks } from "./editHistoryDiff";
 
 function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry {
 	return {
@@ -10,7 +10,7 @@ function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry 
 		baseIndex: 0,
 		versions: [
 			{ ts: Date.now() - 60000, device: "Alice-Laptop", content: "hello world" },
-			{ ts: Date.now() - 30000, device: "Bob-Phone", diff: [[0, "hello world"], [1, "!"]] },
+			{ ts: Date.now() - 30000, device: "Bob-Phone", hunks: [{ s: 0, d: 1, a: ["hello world!"] }] },
 		],
 		...overrides,
 	};
@@ -19,7 +19,7 @@ function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry 
 function makeStore(entries: Record<string, FileHistoryEntry> = {}) {
 	return {
 		getEntry: vi.fn(async (fileId: string) => entries[fileId]),
-		load: vi.fn(async () => ({ version: 1, entries })),
+		load: vi.fn(async () => ({ version: 2, entries })),
 		save: vi.fn(async () => {}),
 		addVersion: vi.fn(async () => {}),
 		prune: vi.fn(async () => {}),
@@ -120,7 +120,7 @@ describe("EditHistoryView", () => {
 		const entry = makeEntry({
 			versions: [
 				{ ts: yesterday.getTime(), device: "Dev1", content: "old" },
-				{ ts: today.getTime(), device: "Dev2", diff: [[1, "x"]] },
+				{ ts: today.getTime(), device: "Dev2", hunks: [{ s: 0, d: 1, a: ["oldx"] }] },
 			],
 		});
 		const store = makeStore({ "file1": entry });
@@ -157,8 +157,8 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, " foo"]] },
-					{ ts: t0 + 120_000, device: "DeviceA", diff: [[1, " bar"]] },
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 foo"] }] },
+					{ ts: t0 + 120_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 foo bar"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -184,8 +184,8 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 30_000, device: "DeviceB", diff: [[1, " b"]] },
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, " a"]] },
+					{ ts: t0 + 30_000, device: "DeviceB", hunks: [{ s: 0, d: 1, a: ["v0 b"] }] },
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 b a"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -209,7 +209,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 10 * 60_000, device: "DeviceA", diff: [[1, " a"]] },
+					{ ts: t0 + 10 * 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -234,7 +234,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t1, device: "DeviceA", diff: [[1, " a"]] },
+					{ ts: t1, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -257,8 +257,8 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, " a"]] },
-					{ ts: t0 + 120_000, device: "DeviceA", diff: [[1, " b"]] },
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a"] }] },
+					{ ts: t0 + 120_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a b"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -293,7 +293,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, " a"]] },
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -322,7 +322,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[0, "v0"], [1, " edit"]] },
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 edit"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -377,10 +377,10 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					// v1 → adds 3 lines, removes 1 line
-					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, "a\nb\nc"], [-1, "x"]] },
-					// v2 → adds 2 lines
-					{ ts: t0 + 120_000, device: "DeviceA", diff: [[1, "d\ne"]] },
+					// v1: "v0" → "a\nb\nc" — replaces 1 line with 3, so +3 / -1
+					{ ts: t0 + 60_000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["a", "b", "c"] }] },
+					// v2: "a\nb\nc" → "a\nb\nc\nd\ne" — appends 2 lines, so +2 / 0
+					{ ts: t0 + 120_000, device: "DeviceA", hunks: [{ s: 3, d: 0, a: ["d", "e"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -409,7 +409,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: t0, device: "DeviceA", content: "v0" },
-					{ ts: t1, device: "DeviceA", diff: [[1, " a"]] },
+					{ ts: t1, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0 a"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -461,7 +461,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: 1000, device: "DeviceA", content: "v0" },
-					{ ts: 2000, device: "DeviceA", diff: [[0, "v0"], [1, "v1"]] },
+					{ ts: 2000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0v1"] }] },
 				],
 			};
 
@@ -540,7 +540,7 @@ describe("EditHistoryView", () => {
 					{
 						ts: 2000,
 						device: "DevA",
-						diff: [[0, "he"], [-1, "llo"], [1, "y there"]],
+						hunks: [{ s: 0, d: 1, a: ["hey there"] }],
 					},
 				],
 			};
@@ -638,7 +638,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: 1000, device: "DevA", content: "hello" },
-					{ ts: 2000, device: "DevA", diff: [[0, "hello"], [1, " world"]] },
+					{ ts: 2000, device: "DevA", hunks: [{ s: 0, d: 1, a: ["hello world"] }] },
 					{ ts: 3000, device: "DevA", content: "hello universe" },
 				],
 			};
@@ -675,7 +675,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: 1000, device: "DevA", content: "a\nb\nc" },
-					{ ts: 2000, device: "DevA", diff: [[0, "a\n"], [-1, "b"], [1, "B"], [0, "\nc"]] },
+					{ ts: 2000, device: "DevA", hunks: [{ s: 1, d: 1, a: ["B"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -713,8 +713,8 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: 1000, device: "DevA", content: oldContent },
-					// Actual computed diff: the whole 10 lines retain + "\nCHANGE" insert.
-					{ ts: 2000, device: "DevA", diff: [[0, oldContent], [1, "\nCHANGE"]] },
+					// Append "CHANGE" after the 10th line — a pure insert hunk.
+					{ ts: 2000, device: "DevA", hunks: [{ s: 10, d: 0, a: ["CHANGE"] }] },
 				],
 			};
 			const store = makeStore({ f1: entry });
@@ -756,7 +756,7 @@ describe("EditHistoryView", () => {
 				baseIndex: 0,
 				versions: [
 					{ ts: 1000, device: "DevA", content: oldContent },
-					{ ts: 2000, device: "DevA", diff: computeDiff(oldContent, newContent) },
+					{ ts: 2000, device: "DevA", hunks: computeLineHunks(oldContent, newContent) },
 				],
 			};
 
