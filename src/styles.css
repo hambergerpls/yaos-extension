@@ -962,3 +962,62 @@
 	font-style: italic;
 	color: var(--text-faint);
 }
+
+/* Edit history — hunk rows */
+
+.yaos-extension-edit-history-diff-hunk {
+	display: flex;
+	flex-direction: column;
+}
+
+.yaos-extension-edit-history-diff-line {
+	display: flex;
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.yaos-extension-edit-history-diff-gutter {
+	width: 1.5em;
+	flex-shrink: 0;
+	text-align: center;
+	user-select: none;
+	color: var(--text-faint);
+}
+
+.yaos-extension-edit-history-diff-line-text {
+	white-space: pre-wrap;
+	word-break: break-word;
+	flex: 1;
+}
+
+.yaos-extension-edit-history-diff-add-line {
+	background: rgba(var(--color-green-rgb), 0.15);
+}
+
+.yaos-extension-edit-history-diff-add-line .yaos-extension-edit-history-diff-gutter {
+	color: var(--color-green);
+}
+
+.yaos-extension-edit-history-diff-del-line {
+	background: rgba(var(--color-red-rgb), 0.15);
+	color: var(--text-muted);
+}
+
+.yaos-extension-edit-history-diff-del-line .yaos-extension-edit-history-diff-gutter {
+	color: var(--color-red);
+}
+
+.yaos-extension-edit-history-diff-retain-line {
+	color: var(--text-muted);
+}
+
+.yaos-extension-edit-history-diff-hunk-skip {
+	padding: 2px 8px;
+	font-style: italic;
+	color: var(--text-faint);
+	font-size: 11px;
+	border-top: 1px dashed var(--background-modifier-border);
+	border-bottom: 1px dashed var(--background-modifier-border);
+	margin: 2px 0;
+}
