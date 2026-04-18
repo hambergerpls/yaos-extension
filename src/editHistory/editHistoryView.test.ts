@@ -693,6 +693,41 @@ describe("EditHistoryView", () => {
 			expect(label).toBeNull();
 		});
 
+		it("renders stored diff as hunk rows with +/-/space gutter", async () => {
+			const entry: FileHistoryEntry = {
+				path: "notes/x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DevA", content: "a\nb\nc" },
+					{ ts: 2000, device: "DevA", diff: [[0, "a\n"], [-1, "b"], [1, "B"], [0, "\nc"]] },
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const entries = view.contentEl.querySelectorAll(".yaos-extension-edit-history-entry");
+			const hunkDiff = entries[0]!.querySelector(".yaos-extension-edit-history-diff")!;
+
+			const hunks = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-hunk");
+			expect(hunks.length).toBe(1);
+
+			const rows = hunks[0]!.querySelectorAll(".yaos-extension-edit-history-diff-line");
+			expect(rows.length).toBe(4);
+
+			expect(rows[0]!.classList.contains("yaos-extension-edit-history-diff-retain-line")).toBe(true);
+			expect(rows[1]!.classList.contains("yaos-extension-edit-history-diff-del-line")).toBe(true);
+			expect(rows[2]!.classList.contains("yaos-extension-edit-history-diff-add-line")).toBe(true);
+			expect(rows[3]!.classList.contains("yaos-extension-edit-history-diff-retain-line")).toBe(true);
+
+			const gutters = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-gutter");
+			expect(Array.from(gutters).map(g => g.textContent)).toEqual([" ", "-", "+", " "]);
+
+			const texts = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-line-text");
+			expect(Array.from(texts).map(t => t.textContent)).toEqual(["a", "b", "B", "c"]);
+		});
+
 		it("renders fallback label when mid-chain reconstruction fails", async () => {
 			// Malformed entry: base at index 0 lacks `content`, so reconstructVersion
 			// returns null for any request. The content-only version at index 1
