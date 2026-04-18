@@ -437,4 +437,95 @@ describe("EditHistoryView", () => {
 			expect(dateHeader?.textContent).toBe(todayLabel);
 		});
 	});
+
+	describe("refresh race", () => {
+		// A deferred promise helper — gives us manual control of when
+		// `store.getEntry()` resolves, so we can drive the interleaving
+		// that causes the bug deterministically.
+		type Deferred<T> = {
+			promise: Promise<T>;
+			resolve: (v: T) => void;
+		};
+		function makeDeferred<T>(): Deferred<T> {
+			let resolve!: (v: T) => void;
+			const promise = new Promise<T>((r) => {
+				resolve = r;
+			});
+			return { promise, resolve };
+		}
+
+		it("concurrent refresh calls with same fileId render only one tree", async () => {
+			const entry: FileHistoryEntry = {
+				path: "notes/a.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DeviceA", content: "v0" },
+					{ ts: 2000, device: "DeviceA", diff: [[0, "v0"], [1, "v1"]] },
+				],
+			};
+
+			const d1 = makeDeferred<FileHistoryEntry | undefined>();
+			const d2 = makeDeferred<FileHistoryEntry | undefined>();
+			const queue = [d1, d2];
+			let callIndex = 0;
+			const store = {
+				getEntry: vi.fn(async () => queue[callIndex++]!.promise),
+			} as unknown as EditHistoryStore;
+
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+
+			// Fire two overlapping refreshes before any resolves.
+			const p1 = view.refresh("file-id");
+			const p2 = view.refresh("file-id");
+
+			// Resolve the SECOND call first, then the first — forces the
+			// stale (first) refresh to resume AFTER the winning render.
+			d2.resolve(entry);
+			d1.resolve(entry);
+			await Promise.all([p1, p2]);
+
+			const headers = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-file-path",
+			);
+			expect(headers.length).toBe(1);
+
+			const entries = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-entry",
+			);
+			expect(entries.length).toBe(entry.versions.length);
+		});
+
+		it("late-resolving refresh does not clobber a newer null refresh", async () => {
+			// Scenario: refresh(fileId) starts, awaits store.getEntry (slow),
+			// then refresh(null) is called (e.g. user navigated to a non-markdown
+			// leaf). The null call must win.
+			const d = makeDeferred<FileHistoryEntry | undefined>();
+			const store = {
+				getEntry: vi.fn(async () => d.promise),
+			} as unknown as EditHistoryStore;
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+
+			const p1 = view.refresh("file-id");
+			const p2 = view.refresh(null);
+
+			// Resolve the stale fetch AFTER the null call has rendered.
+			d.resolve({
+				path: "stale.md",
+				baseIndex: 0,
+				versions: [{ ts: 1, device: "x", content: "x" }],
+			});
+			await Promise.all([p1, p2]);
+
+			expect(
+				view.contentEl.querySelectorAll(".yaos-extension-edit-history-file-path").length,
+			).toBe(0);
+			const empties = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-empty",
+			);
+			expect(empties.length).toBe(1);
+			expect(empties[0]!.textContent).toBe("No file selected");
+		});
+	});
 });
