@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { computeLineHunks, applyLineHunks, reconstructVersion } from "./editHistoryDiff";
+import {
+	computeLineHunks,
+	applyLineHunks,
+	reconstructVersion,
+	computeDiffSummary,
+} from "./editHistoryDiff";
 import type { FileHistoryEntry } from "./types";
 
 describe("computeLineHunks", () => {
@@ -195,5 +200,11 @@ describe("reconstructVersion", () => {
 	it("returns null for empty versions array", () => {
 		const entry: FileHistoryEntry = { path: "t.md", baseIndex: 0, versions: [] };
 		expect(reconstructVersion(entry, 0)).toBeNull();
+	});
+});
+
+describe("computeDiffSummary", () => {
+	it("returns zeros for empty hunks", () => {
+		expect(computeDiffSummary([])).toEqual({ added: 0, removed: 0 });
 	});
 });
