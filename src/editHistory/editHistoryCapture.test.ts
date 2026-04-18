@@ -36,6 +36,23 @@ function makeStore(captured: { calls: any[] }) {
 		async getEntry(fileId: string): Promise<FileHistoryEntry | undefined> {
 			return entries[fileId];
 		},
+		async transaction<T>(fn: (data: EditHistoryData) => T | Promise<T>): Promise<T> {
+			// Snapshot pre-state so we can diff versions added by this txn
+			const pre: Record<string, number> = {};
+			for (const [id, e] of Object.entries(entries)) pre[id] = e.versions.length;
+
+			const data: EditHistoryData = { version: 1, entries };
+			const result = await fn(data);
+
+			// Record one capture call per newly-appended version
+			for (const [id, e] of Object.entries(entries)) {
+				const priorLen = pre[id] ?? 0;
+				for (let i = priorLen; i < e.versions.length; i++) {
+					captured.calls.push({ fileId: id, path: e.path, snap: e.versions[i] });
+				}
+			}
+			return result;
+		},
 	} as any as EditHistoryStore;
 }
 

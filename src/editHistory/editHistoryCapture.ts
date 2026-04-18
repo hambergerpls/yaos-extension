@@ -1,6 +1,5 @@
 import type { EditHistoryStore } from "./editHistoryStore";
 import { computeDiff, reconstructVersion } from "./editHistoryDiff";
-import type { VersionSnapshot } from "./types";
 import type { PendingEditsDb } from "./pendingEditsDb";
 import { logWarn } from "../logger";
 
@@ -134,36 +133,39 @@ export class EditHistoryCapture {
 	}
 
 	private async batchCapture(edits: Array<{ fileId: string; path: string; content: string }>): Promise<void> {
-		const batch: Array<{ fileId: string; path: string; snapshot: VersionSnapshot }> = [];
+		const accepted: string[] = [];
+		await this.store.transaction((data) => {
+			for (const edit of edits) {
+				if (edit.content.length > this.maxSizeBytes) continue;
+				if (!this.isWithinDailyLimit(edit.fileId)) continue;
 
-		for (const edit of edits) {
-			if (edit.content.length > this.maxSizeBytes) continue;
-			if (!this.isWithinDailyLimit(edit.fileId)) continue;
+				const entry = data.entries[edit.fileId];
+				if (!entry) {
+					data.entries[edit.fileId] = {
+						path: edit.path,
+						baseIndex: 0,
+						versions: [{ ts: Date.now(), device: this.getDeviceName(), content: edit.content }],
+					};
+					accepted.push(edit.fileId);
+					continue;
+				}
 
-			const entry = await this.store.getEntry(edit.fileId);
-			let snap: VersionSnapshot | null = null;
-
-			if (!entry) {
-				snap = { ts: Date.now(), device: this.getDeviceName(), content: edit.content };
-			} else {
 				const lastContent = reconstructVersion(entry, entry.versions.length - 1);
 				if (lastContent === edit.content) continue;
+
+				entry.path = edit.path;
 				const versionsSinceBase = entry.versions.length - entry.baseIndex;
 				if (versionsSinceBase >= this.settings.rebaseInterval || lastContent === null) {
-					snap = { ts: Date.now(), device: this.getDeviceName(), content: edit.content };
+					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content: edit.content });
+					entry.baseIndex = entry.versions.length - 1;
 				} else {
 					const diff = computeDiff(lastContent, edit.content);
-					snap = { ts: Date.now(), device: this.getDeviceName(), diff };
+					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), diff });
 				}
+				accepted.push(edit.fileId);
 			}
-
-			if (snap) {
-				batch.push({ fileId: edit.fileId, path: edit.path, snapshot: snap });
-				this.incrementDailyCount(edit.fileId);
-			}
-		}
-
-		await this.store.addVersions(batch);
+		});
+		for (const fileId of accepted) this.incrementDailyCount(fileId);
 	}
 
 	private async promoteFromDb(fileId: string): Promise<void> {
@@ -181,42 +183,36 @@ export class EditHistoryCapture {
 		if (content.length > this.maxSizeBytes) return;
 		if (!this.isWithinDailyLimit(fileId)) return;
 
-		const entry = await this.store.getEntry(fileId);
+		let didAdd = false;
+		await this.store.transaction((data) => {
+			const entry = data.entries[fileId];
 
-		if (!entry) {
-			const snap: VersionSnapshot = {
-				ts: Date.now(),
-				device: this.getDeviceName(),
-				content,
-			};
-			await this.store.addVersion(fileId, path, snap);
-			this.incrementDailyCount(fileId);
-			return;
-		}
+			if (!entry) {
+				data.entries[fileId] = {
+					path,
+					baseIndex: 0,
+					versions: [{ ts: Date.now(), device: this.getDeviceName(), content }],
+				};
+				didAdd = true;
+				return;
+			}
 
-		const lastContent = reconstructVersion(entry, entry.versions.length - 1);
-		if (lastContent === content) return;
+			const lastContent = reconstructVersion(entry, entry.versions.length - 1);
+			if (lastContent === content) return;
 
-		const versionsSinceBase = entry.versions.length - entry.baseIndex;
-		if (versionsSinceBase >= this.settings.rebaseInterval || lastContent === null) {
-			const snap: VersionSnapshot = {
-				ts: Date.now(),
-				device: this.getDeviceName(),
-				content,
-			};
-			await this.store.addVersion(fileId, path, snap);
-			this.incrementDailyCount(fileId);
-			return;
-		}
+			entry.path = path;
+			const versionsSinceBase = entry.versions.length - entry.baseIndex;
+			if (versionsSinceBase >= this.settings.rebaseInterval || lastContent === null) {
+				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content });
+				entry.baseIndex = entry.versions.length - 1;
+			} else {
+				const diff = computeDiff(lastContent, content);
+				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), diff });
+			}
+			didAdd = true;
+		});
 
-		const diff = computeDiff(lastContent, content);
-		const snap: VersionSnapshot = {
-			ts: Date.now(),
-			device: this.getDeviceName(),
-			diff,
-		};
-		await this.store.addVersion(fileId, path, snap);
-		this.incrementDailyCount(fileId);
+		if (didAdd) this.incrementDailyCount(fileId);
 	}
 
 	private isWithinDailyLimit(fileId: string): boolean {
