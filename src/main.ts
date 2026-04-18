@@ -881,7 +881,11 @@ class YaosExtensionSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName("Edit capture debounce (seconds)")
-        .setDesc("Idle time in seconds before capturing an edit snapshot.")
+        .setDesc(
+          "Idle time in seconds before capturing an edit snapshot. " +
+            "A separate 60-second maxWait guarantees a snapshot during continuous typing " +
+            "even if this idle threshold is never reached; values above 60 are clipped by that limit.",
+        )
         .addSlider((slider) =>
           slider
             .setLimits(5, 120, 5)
