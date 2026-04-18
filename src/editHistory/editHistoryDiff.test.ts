@@ -349,4 +349,19 @@ describe("buildHunks", () => {
 		expect(result[2]!.kind).toBe("hunk");
 		expect((result[2] as any).lines.length).toBe(4);
 	});
+
+	it("merges two close changes (overlapping context) into one hunk", () => {
+		const lines: DiffLine[] = [
+			{ kind: "add", text: "A" },
+		];
+		for (let i = 0; i < 4; i++) lines.push({ kind: "retain", text: `mid${i}` });
+		lines.push({ kind: "add", text: "B" });
+
+		const result = buildHunks(lines, 3);
+		// Windows: A's window is [0,3], B's window is [2,5]. Overlap at 2-3.
+		// All indices 0..5 are kept. One hunk.
+		expect(result.length).toBe(1);
+		expect(result[0]!.kind).toBe("hunk");
+		expect((result[0] as any).lines.length).toBe(6);
+	});
 });
