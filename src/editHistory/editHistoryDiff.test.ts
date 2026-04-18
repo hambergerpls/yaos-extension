@@ -175,4 +175,12 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 3)).toBe("rebased\n!");
 	});
+
+	it("returns null when version index is out of bounds", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md", baseIndex: 0,
+			versions: [{ ts: 1, device: "d", content: "hi" }],
+		};
+		expect(reconstructVersion(entry, 5)).toBeNull();
+	});
 });
