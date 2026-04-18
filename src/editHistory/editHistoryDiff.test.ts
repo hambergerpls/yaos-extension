@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeLineHunks, applyLineHunks } from "./editHistoryDiff";
+import { computeLineHunks, applyLineHunks, reconstructVersion } from "./editHistoryDiff";
+import type { FileHistoryEntry } from "./types";
 
 describe("computeLineHunks", () => {
 	it("emits a single replace-one-line hunk for middle-line substitution", () => {
@@ -124,4 +125,18 @@ describe("computeLineHunks + applyLineHunks roundtrip", () => {
 			expect(applyLineHunks(old, hunks)).toBe(next);
 		});
 	}
+});
+
+describe("reconstructVersion", () => {
+	it("returns base content when requesting the base version", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md",
+			baseIndex: 0,
+			versions: [
+				{ ts: 1, device: "d", content: "hello" },
+				{ ts: 2, device: "d", hunks: [{ s: 1, d: 0, a: ["world"] }] },
+			],
+		};
+		expect(reconstructVersion(entry, 0)).toBe("hello");
+	});
 });
