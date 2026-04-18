@@ -150,4 +150,16 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 1)).toBe("hello\nworld");
 	});
+
+	it("applies multiple hunks-deltas in sequence", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md", baseIndex: 0,
+			versions: [
+				{ ts: 1, device: "d", content: "a" },
+				{ ts: 2, device: "d", hunks: [{ s: 1, d: 0, a: ["b"] }] },
+				{ ts: 3, device: "d", hunks: [{ s: 2, d: 0, a: ["c"] }] },
+			],
+		};
+		expect(reconstructVersion(entry, 2)).toBe("a\nb\nc");
+	});
 });
