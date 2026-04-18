@@ -258,4 +258,13 @@ describe("buildHunks", () => {
 		expect(result[1]!.kind).toBe("hunk");
 		expect(result[2]).toEqual({ kind: "skip", count: 2 });
 	});
+
+	it("splits two distant changes into two hunks", () => {
+		const lines: DiffLine[] = [{ kind: "add", text: "A" }];
+		for (let i = 0; i < 10; i++) lines.push({ kind: "retain", text: `m${i}` });
+		lines.push({ kind: "add", text: "B" });
+		const result = buildHunks(lines, 3);
+		expect(result.length).toBe(3);
+		expect(result[1]).toEqual({ kind: "skip", count: 4 });
+	});
 });
