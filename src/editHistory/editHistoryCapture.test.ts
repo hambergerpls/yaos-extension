@@ -448,6 +448,137 @@ describe("EditHistoryCapture", () => {
 				fastDb.close();
 			}
 		});
+
+		it("fires at debounceMs when idle, not maxWaitMs", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 30,
+				maxWaitMs: 500,
+			});
+
+			try {
+				fastCapture.scheduleCapture("f1", "a.md", "hello");
+				await sleep(100);
+
+				// Idle should have fired at ~30ms. Max is 500ms away.
+				expect(captured.calls).toHaveLength(1);
+				expect(captured.calls[0].snap.content).toBe("hello");
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("maxWait timer does not reset on subsequent edits in the same burst", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 400,
+				maxWaitMs: 150,
+			});
+
+			try {
+				// Burst: edits at t=0, t=60, t=120 — all before maxWait (150ms)
+				fastCapture.scheduleCapture("f1", "a.md", "v0");
+				await sleep(60);
+				fastCapture.scheduleCapture("f1", "a.md", "v1");
+				await sleep(60);
+				fastCapture.scheduleCapture("f1", "a.md", "v2");
+
+				// At t=150, max should fire. Idle alone would fire at ~t=520.
+				await sleep(100);
+				expect(captured.calls).toHaveLength(1);
+				expect(captured.calls[0].snap.content).toBe("v2");
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("new burst after capture gets a fresh maxWait", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 30,
+				maxWaitMs: 200,
+			});
+
+			try {
+				fastCapture.scheduleCapture("f1", "a.md", "burst1");
+				await sleep(80); // idle fires at ~30ms
+				expect(captured.calls).toHaveLength(1);
+				expect(captured.calls[0].snap.content).toBe("burst1");
+
+				// Now schedule a new burst — second capture is a delta (diff) off burst1
+				fastCapture.scheduleCapture("f1", "a.md", "burst2");
+				await sleep(80); // idle fires again at ~30ms after burst2 starts
+				expect(captured.calls).toHaveLength(2);
+				// Delta snapshots have `diff` instead of `content`
+				expect(captured.calls[1].snap.diff).toBeDefined();
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("whichever timer fires first cancels the other", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 20,
+				maxWaitMs: 100,
+			});
+
+			try {
+				fastCapture.scheduleCapture("f1", "a.md", "single-edit");
+				// Idle fires at ~20ms
+				await sleep(300);
+				// By now, if the max timer hadn't been cleared, it would have fired at ~100ms
+				// and produced a second capture. Expect only one.
+				expect(captured.calls).toHaveLength(1);
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("flush clears both idle and max timers", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 100,
+				maxWaitMs: 150,
+			});
+
+			try {
+				fastCapture.scheduleCapture("f1", "a.md", "hello");
+				await fastCapture.flush();
+				// flush() already captured once
+				expect(captured.calls).toHaveLength(1);
+
+				// Neither idle (100ms) nor max (150ms) should fire now — both were cleared
+				await sleep(250);
+				expect(captured.calls).toHaveLength(1);
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("stop clears both idle and max timers", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, {
+				debounceMs: 100,
+				maxWaitMs: 150,
+			});
+
+			try {
+				fastCapture.scheduleCapture("f1", "a.md", "hello");
+				fastCapture.stop();
+
+				// Neither idle (100ms) nor max (150ms) should fire
+				await sleep(250);
+				expect(captured.calls).toHaveLength(0);
+			} finally {
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
 	});
 
 	describe("recovery on start", () => {
