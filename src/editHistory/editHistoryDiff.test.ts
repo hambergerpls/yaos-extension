@@ -139,4 +139,15 @@ describe("reconstructVersion", () => {
 		};
 		expect(reconstructVersion(entry, 0)).toBe("hello");
 	});
+
+	it("applies a single hunks-delta from the base", () => {
+		const entry: FileHistoryEntry = {
+			path: "t.md", baseIndex: 0,
+			versions: [
+				{ ts: 1, device: "d", content: "hello" },
+				{ ts: 2, device: "d", hunks: [{ s: 1, d: 0, a: ["world"] }] },
+			],
+		};
+		expect(reconstructVersion(entry, 1)).toBe("hello\nworld");
+	});
 });
