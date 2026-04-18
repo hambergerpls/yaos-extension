@@ -265,4 +265,13 @@ describe("segmentLines", () => {
 			{ kind: "retain", text: "b" },
 		]);
 	});
+
+	it("emits retain/del/retain when a full line is deleted", () => {
+		const result = segmentLines([[0, "a\n"], [-1, "b\n"], [0, "c"]]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "a" },
+			{ kind: "del", text: "b" },
+			{ kind: "retain", text: "c" },
+		]);
+	});
 });
