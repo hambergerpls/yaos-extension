@@ -611,5 +611,34 @@ describe("EditHistoryView", () => {
 			);
 			expect(marker?.textContent).toBe("… (10 more lines)");
 		});
+
+		it("initial version (≤ 20 lines) renders full content with no truncation marker", async () => {
+			const content = "alpha\nbeta\ngamma\ndelta\nepsilon";
+			const entry: FileHistoryEntry = {
+				path: "notes/short.md",
+				baseIndex: 0,
+				versions: [{ ts: 1000, device: "DevA", content }],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const label = view.contentEl.querySelector(
+				".yaos-extension-edit-history-diff-initial-label",
+			);
+			expect(label?.textContent).toBe("Initial snapshot");
+
+			const addSpans = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-add",
+			);
+			expect(addSpans.length).toBe(1);
+			expect(addSpans[0]!.textContent).toBe(content);
+
+			const marker = view.contentEl.querySelector(
+				".yaos-extension-edit-history-diff-initial-truncated",
+			);
+			expect(marker).toBeNull();
+		});
 	});
 });
