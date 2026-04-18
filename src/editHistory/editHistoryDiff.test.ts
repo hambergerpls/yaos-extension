@@ -207,4 +207,12 @@ describe("segmentLines", () => {
 			{ kind: "add", text: "new" },
 		]);
 	});
+
+	it("emits retain then del for delete at end of line", () => {
+		const result = segmentLines([[0, "keep\n"], [-1, "gone"]]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "keep" },
+			{ kind: "del", text: "gone" },
+		]);
+	});
 });
