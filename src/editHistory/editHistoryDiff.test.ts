@@ -223,4 +223,18 @@ describe("segmentLines", () => {
 			{ kind: "add", text: "hello there" },
 		]);
 	});
+
+	it("emits del+add pair then retain for change followed by unchanged line", () => {
+		const result = segmentLines([
+			[0, "hello "],
+			[-1, "world"],
+			[1, "there"],
+			[0, "\nnext"],
+		]);
+		expect(result).toEqual([
+			{ kind: "del", text: "hello world" },
+			{ kind: "add", text: "hello there" },
+			{ kind: "retain", text: "next" },
+		]);
+	});
 });
