@@ -20,6 +20,6 @@ export const DEFAULT_SETTINGS: YaosExtensionSettings = {
   showEditHistory: true,
   editHistoryRetentionDays: 30,
   editHistoryMaxPerFilePerDay: 50,
-  editHistoryDebounceMs: 30000,
+  editHistoryDebounceMs: 5000,
   editHistoryRebaseInterval: 10,
 };

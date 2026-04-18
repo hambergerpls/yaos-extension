@@ -45,8 +45,8 @@ describe("edit history settings", () => {
     expect(DEFAULT_SETTINGS.editHistoryMaxPerFilePerDay).toBe(50);
   });
 
-  it("has editHistoryDebounceMs defaulting to 30000", () => {
-    expect(DEFAULT_SETTINGS.editHistoryDebounceMs).toBe(30000);
+  it("has editHistoryDebounceMs defaulting to 5000", () => {
+    expect(DEFAULT_SETTINGS.editHistoryDebounceMs).toBe(5000);
   });
 
   it("has editHistoryRebaseInterval defaulting to 10", () => {
