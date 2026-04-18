@@ -246,4 +246,16 @@ describe("buildHunks", () => {
 			{ kind: "hunk", lines: [{ kind: "add", text: "x" }] },
 		]);
 	});
+
+	it("trims leading+trailing context beyond window to skip markers", () => {
+		const lines: DiffLine[] = [];
+		for (let i = 0; i < 5; i++) lines.push({ kind: "retain", text: `l${i}` });
+		lines.push({ kind: "add", text: "X" });
+		for (let i = 0; i < 5; i++) lines.push({ kind: "retain", text: `t${i}` });
+		const result = buildHunks(lines, 3);
+		expect(result.length).toBe(3);
+		expect(result[0]).toEqual({ kind: "skip", count: 2 });
+		expect(result[1]!.kind).toBe("hunk");
+		expect(result[2]).toEqual({ kind: "skip", count: 2 });
+	});
 });
