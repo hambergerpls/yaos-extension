@@ -332,4 +332,21 @@ describe("buildHunks", () => {
 		expect((result[1] as any).lines.length).toBe(7);
 		expect(result[2]).toEqual({ kind: "skip", count: 2 });
 	});
+
+	it("splits two distant changes into two hunks separated by a skip", () => {
+		const lines: DiffLine[] = [
+			{ kind: "add", text: "A" },
+		];
+		for (let i = 0; i < 10; i++) lines.push({ kind: "retain", text: `mid${i}` });
+		lines.push({ kind: "add", text: "B" });
+
+		const result = buildHunks(lines, 3);
+		// Expect: hunk(A + retain×3) + skip(4) + hunk(retain×3 + B)
+		expect(result.length).toBe(3);
+		expect(result[0]!.kind).toBe("hunk");
+		expect((result[0] as any).lines.length).toBe(4);
+		expect(result[1]).toEqual({ kind: "skip", count: 4 });
+		expect(result[2]!.kind).toBe("hunk");
+		expect((result[2] as any).lines.length).toBe(4);
+	});
 });
