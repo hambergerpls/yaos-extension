@@ -103,3 +103,39 @@ export function segmentLines(ops: DiffOp[]): DiffLine[] {
 
 	return result;
 }
+
+export type HunkItem =
+	| { kind: "hunk"; lines: DiffLine[] }
+	| { kind: "skip"; count: number };
+
+export const DEFAULT_CONTEXT_LINES = 3;
+
+export function buildHunks(lines: DiffLine[], context: number): HunkItem[] {
+	const changeIdx: number[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i]!.kind !== "retain") changeIdx.push(i);
+	}
+	if (changeIdx.length === 0) return [];
+
+	const keep = new Array<boolean>(lines.length).fill(false);
+	for (const i of changeIdx) {
+		const lo = Math.max(0, i - context);
+		const hi = Math.min(lines.length - 1, i + context);
+		for (let j = lo; j <= hi; j++) keep[j] = true;
+	}
+
+	const items: HunkItem[] = [];
+	let i = 0;
+	while (i < lines.length) {
+		if (keep[i]) {
+			const start = i;
+			while (i < lines.length && keep[i]) i++;
+			items.push({ kind: "hunk", lines: lines.slice(start, i) });
+		} else {
+			const start = i;
+			while (i < lines.length && !keep[i]) i++;
+			items.push({ kind: "skip", count: i - start });
+		}
+	}
+	return items;
+}
