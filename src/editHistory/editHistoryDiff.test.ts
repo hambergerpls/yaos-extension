@@ -51,4 +51,11 @@ describe("computeLineHunks", () => {
 		expect(hunks[0]).toEqual({ s: 0, d: 1, a: ["A"] });
 		expect(hunks[1]).toEqual({ s: 4, d: 1, a: ["E"] });
 	});
+
+	it("treats trailing newline as a retained empty line", () => {
+		// "a\nb\n" is 2 real lines + a trailing empty line (convention).
+		// Changing "b" to "B" while keeping the trailing newline produces s=1, d=1.
+		const hunks = computeLineHunks("a\nb\n", "a\nB\n");
+		expect(hunks).toEqual([{ s: 1, d: 1, a: ["B"] }]);
+	});
 });
