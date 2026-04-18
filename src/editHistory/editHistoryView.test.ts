@@ -147,4 +147,33 @@ describe("EditHistoryView", () => {
 
 		expect(onRestore).toHaveBeenCalledWith("restore me");
 	});
+
+	describe("session grouping", () => {
+		it("groups consecutive same-device versions within 5 minutes into one session", async () => {
+			const t0 = Date.now();
+			const entry: FileHistoryEntry = {
+				path: "a.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: t0, device: "DeviceA", content: "v0" },
+					{ ts: t0 + 60_000, device: "DeviceA", diff: [[1, " foo"]] },
+					{ ts: t0 + 120_000, device: "DeviceA", diff: [[1, " bar"]] },
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const sessionHeaders = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-session-header",
+			);
+			expect(sessionHeaders.length).toBe(1);
+
+			const count = view.contentEl.querySelector(
+				".yaos-extension-edit-history-session-count",
+			);
+			expect(count?.textContent).toContain("3");
+		});
+	});
 });
