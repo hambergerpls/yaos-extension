@@ -4,6 +4,9 @@ import {
 	applyLineHunks,
 	reconstructVersion,
 	computeDiffSummary,
+	buildHunks,
+	DEFAULT_CONTEXT_LINES,
+	type DiffLine,
 } from "./editHistoryDiff";
 import type { FileHistoryEntry } from "./types";
 
@@ -227,5 +230,14 @@ describe("computeDiffSummary", () => {
 			{ s: 0, d: 2, a: ["X"] },
 			{ s: 5, d: 1, a: ["Y", "Z"] },
 		])).toEqual({ added: 3, removed: 3 });
+	});
+});
+
+describe("buildHunks", () => {
+	it("returns empty array for no changes", () => {
+		expect(buildHunks([
+			{ kind: "retain", text: "a" },
+			{ kind: "retain", text: "b" },
+		], 3)).toEqual([]);
 	});
 });
