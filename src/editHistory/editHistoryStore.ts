@@ -8,9 +8,17 @@ const HISTORY_PATH = ".yaos-extension/edit-history.json";
 
 export class EditHistoryStore {
 	private vault: Vault;
+	private writeQueue: Promise<void> = Promise.resolve();
 
 	constructor(vault: Vault) {
 		this.vault = vault;
+	}
+
+	private enqueue<T>(op: () => Promise<T>): Promise<T> {
+		const next = this.writeQueue.then(op, op);
+		// Keep the chain alive without propagating failures into the queue head.
+		this.writeQueue = next.then(() => {}, () => {});
+		return next;
 	}
 
 	async load(): Promise<EditHistoryData> {
@@ -38,20 +46,24 @@ export class EditHistoryStore {
 		path: string,
 		snapshot: VersionSnapshot,
 	): Promise<void> {
-		const data = await this.load();
-		this.applyVersion(data, fileId, path, snapshot);
-		await this.save(data);
+		return this.enqueue(async () => {
+			const data = await this.load();
+			this.applyVersion(data, fileId, path, snapshot);
+			await this.save(data);
+		});
 	}
 
 	async addVersions(
 		entries: Array<{ fileId: string; path: string; snapshot: VersionSnapshot }>,
 	): Promise<void> {
 		if (entries.length === 0) return;
-		const data = await this.load();
-		for (const { fileId, path, snapshot } of entries) {
-			this.applyVersion(data, fileId, path, snapshot);
-		}
-		await this.save(data);
+		return this.enqueue(async () => {
+			const data = await this.load();
+			for (const { fileId, path, snapshot } of entries) {
+				this.applyVersion(data, fileId, path, snapshot);
+			}
+			await this.save(data);
+		});
 	}
 
 	private applyVersion(
@@ -82,42 +94,46 @@ export class EditHistoryStore {
 	}
 
 	async prune(retentionDays: number): Promise<void> {
-		const data = await this.load();
-		const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+		return this.enqueue(async () => {
+			const data = await this.load();
+			const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
 
-		for (const fileId of Object.keys(data.entries)) {
-			const entry = data.entries[fileId]!;
+			for (const fileId of Object.keys(data.entries)) {
+				const entry = data.entries[fileId]!;
 
-			const firstRecentIdx = entry.versions.findIndex(v => v.ts >= cutoff);
-			if (firstRecentIdx === -1) {
-				delete data.entries[fileId];
-				continue;
-			}
-
-			if (firstRecentIdx === 0) continue;
-
-			if (entry.baseIndex < firstRecentIdx) {
-				const newBaseContent = reconstructVersion(entry, firstRecentIdx);
-				if (newBaseContent !== null) {
-					const remaining = entry.versions.slice(firstRecentIdx);
-					remaining[0] = { ...remaining[0]!, content: newBaseContent, diff: undefined };
-					entry.versions = remaining;
-					entry.baseIndex = 0;
-				} else {
+				const firstRecentIdx = entry.versions.findIndex(v => v.ts >= cutoff);
+				if (firstRecentIdx === -1) {
 					delete data.entries[fileId];
+					continue;
 				}
-			} else {
-				entry.baseIndex -= firstRecentIdx;
-				entry.versions = entry.versions.slice(firstRecentIdx);
-			}
-		}
 
-		await this.save(data);
+				if (firstRecentIdx === 0) continue;
+
+				if (entry.baseIndex < firstRecentIdx) {
+					const newBaseContent = reconstructVersion(entry, firstRecentIdx);
+					if (newBaseContent !== null) {
+						const remaining = entry.versions.slice(firstRecentIdx);
+						remaining[0] = { ...remaining[0]!, content: newBaseContent, diff: undefined };
+						entry.versions = remaining;
+						entry.baseIndex = 0;
+					} else {
+						delete data.entries[fileId];
+					}
+				} else {
+					entry.baseIndex -= firstRecentIdx;
+					entry.versions = entry.versions.slice(firstRecentIdx);
+				}
+			}
+
+			await this.save(data);
+		});
 	}
 
 	async pruneEntry(fileId: string): Promise<void> {
-		const data = await this.load();
-		delete data.entries[fileId];
-		await this.save(data);
+		return this.enqueue(async () => {
+			const data = await this.load();
+			delete data.entries[fileId];
+			await this.save(data);
+		});
 	}
 }
