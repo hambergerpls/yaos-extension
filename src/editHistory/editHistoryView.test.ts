@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EditHistoryView, EDIT_HISTORY_VIEW_TYPE } from "./editHistoryView";
 import { EditHistoryStore } from "./editHistoryStore";
 import type { FileHistoryEntry } from "./types";
+import { computeDiff } from "./editHistoryDiff";
 
 function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry {
 	return {
@@ -739,6 +740,49 @@ describe("EditHistoryView", () => {
 			const addRows = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
 			expect(addRows.length).toBe(1);
 			expect(addRows[0]!.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent).toBe("CHANGE");
+		});
+
+		it("renders two distant changes as two hunks separated by a skip marker", async () => {
+			// Old: 20 "keep" lines.
+			// New: same, but line 0 changed to "FIRST" and line 19 changed to "LAST".
+			const oldLines = Array.from({ length: 20 }, (_, i) => `keep${i}`);
+			const newLines = [...oldLines];
+			newLines[0] = "FIRST";
+			newLines[19] = "LAST";
+			const oldContent = oldLines.join("\n");
+			const newContent = newLines.join("\n");
+			const entry: FileHistoryEntry = {
+				path: "notes/twohunks.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DevA", content: oldContent },
+					{ ts: 2000, device: "DevA", diff: computeDiff(oldContent, newContent) },
+				],
+			};
+
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const entries = view.contentEl.querySelectorAll(".yaos-extension-edit-history-entry");
+			const hunkDiff = entries[0]!.querySelector(".yaos-extension-edit-history-diff")!;
+
+			// Expect at least two hunks (possibly with surrounding skips).
+			const hunks = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-hunk");
+			expect(hunks.length).toBeGreaterThanOrEqual(2);
+
+			// At least one skip between the two hunks.
+			const skips = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-hunk-skip");
+			expect(skips.length).toBeGreaterThanOrEqual(1);
+
+			// Both FIRST and LAST appear.
+			const addRows = hunkDiff.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
+			const addTexts = Array.from(addRows).map(r =>
+				r.querySelector(".yaos-extension-edit-history-diff-line-text")!.textContent,
+			);
+			expect(addTexts).toContain("FIRST");
+			expect(addTexts).toContain("LAST");
 		});
 
 		it("renders fallback label when mid-chain reconstruction fails", async () => {
