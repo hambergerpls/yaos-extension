@@ -9,6 +9,7 @@ export class NotificationView extends ItemView {
   private deviceName: string;
   private onOpenFile: (fileId: string, commentId?: string) => void;
   private notifications: Notification[] = [];
+  private refreshGeneration = 0;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -43,8 +44,11 @@ export class NotificationView extends ItemView {
   }
 
   async refresh(): Promise<void> {
-    this.notifications = await this.store.getNotificationsForDevice(this.deviceName);
-    this.notifications.sort((a, b) => b.createdAt - a.createdAt);
+    const gen = ++this.refreshGeneration;
+    const next = await this.store.getNotificationsForDevice(this.deviceName);
+    if (gen !== this.refreshGeneration) return;
+    next.sort((a, b) => b.createdAt - a.createdAt);
+    this.notifications = next;
     await this.render();
   }
 
