@@ -243,4 +243,55 @@ describe("CommentView", () => {
       expect(app.workspace.openLinkText).toHaveBeenCalledWith("other-file.md", "");
     });
   });
+
+  describe("refresh race", () => {
+    type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
+    function makeDeferred<T>(): Deferred<T> {
+      let resolve!: (v: T) => void;
+      const promise = new Promise<T>((r) => { resolve = r; });
+      return { promise, resolve };
+    }
+
+    it("stale concurrent refresh does not clobber newer thread list", async () => {
+      const staleThread: CommentThread = {
+        comment: makeComment({ id: "stale-c", text: "old" }),
+        replies: [],
+      };
+      const freshThreads: CommentThread[] = [
+        { comment: makeComment({ id: "fresh-c1", text: "new-1" }), replies: [] },
+        { comment: makeComment({ id: "fresh-c2", text: "new-2" }), replies: [] },
+      ];
+
+      const d1 = makeDeferred<CommentThread[]>();
+      const d2 = makeDeferred<CommentThread[]>();
+      const queue = [d1, d2];
+      let callIndex = 0;
+      const store = {
+        getThreadsForFile: vi.fn(async () => queue[callIndex++]!.promise),
+      } as unknown as CommentStore;
+
+      const app = {
+        workspace: { getLeavesOfType: vi.fn(() => []), openLinkText: vi.fn() },
+        vault: { adapter: { exists: vi.fn(), read: vi.fn() } },
+      } as any;
+
+      const view = new CommentView({} as any, store, app, {});
+      await view.onOpen();
+
+      const p1 = view.refresh("notes/test.md");
+      const p2 = view.refresh("notes/test.md");
+
+      // Newer call resolves first with fresh data and fully finishes.
+      d2.resolve(freshThreads);
+      await p2;
+      // Then stale call resolves — must not overwrite fresh render.
+      d1.resolve([staleThread]);
+      await p1;
+
+      const threads = view.contentEl.querySelectorAll(
+        ".yaos-extension-comment-thread",
+      );
+      expect(threads.length).toBe(freshThreads.length);
+    });
+  });
 });
