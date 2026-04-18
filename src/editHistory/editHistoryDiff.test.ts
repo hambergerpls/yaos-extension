@@ -44,4 +44,11 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("a\nX\nY\nb", "a\nP\nQ\nR\nb");
 		expect(hunks).toEqual([{ s: 1, d: 2, a: ["P", "Q", "R"] }]);
 	});
+
+	it("emits two hunks for two disjoint changes", () => {
+		const hunks = computeLineHunks("a\nb\nc\nd\ne", "A\nb\nc\nd\nE");
+		expect(hunks.length).toBe(2);
+		expect(hunks[0]).toEqual({ s: 0, d: 1, a: ["A"] });
+		expect(hunks[1]).toEqual({ s: 4, d: 1, a: ["E"] });
+	});
 });
