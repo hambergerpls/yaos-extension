@@ -74,8 +74,24 @@ function splitIntoLines(text: string): string[] {
 	return parts;
 }
 
-export function applyLineHunks(_base: string, _hunks: LineHunk[]): string {
-	throw new Error("not implemented");
+export function applyLineHunks(base: string, hunks: LineHunk[]): string {
+	// Split preserving the convention that a trailing "\n" appears as a final "" element.
+	const baseLines = base === "" ? [] : base.split("\n");
+
+	const out: string[] = [];
+	let cursor = 0;
+	for (const h of hunks) {
+		// Copy retained lines before this hunk.
+		for (let i = cursor; i < h.s; i++) out.push(baseLines[i]!);
+		// Skip d old lines.
+		cursor = h.s + h.d;
+		// Emit added lines.
+		for (const line of h.a) out.push(line);
+	}
+	// Copy trailing retained lines.
+	for (let i = cursor; i < baseLines.length; i++) out.push(baseLines[i]!);
+
+	return out.join("\n");
 }
 
 export function reconstructVersion(
