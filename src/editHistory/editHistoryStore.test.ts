@@ -332,4 +332,43 @@ describe("EditHistoryStore", () => {
 			expect(entry.versions[entry.baseIndex].content).toBeDefined();
 		});
 	});
+
+	describe("write serialization", () => {
+		function makeSlowVault(files: Record<string, string>, gate: { pending: Array<() => void> }) {
+			return {
+				adapter: {
+					exists: vi.fn(async (path: string) => path in files),
+					mkdir: vi.fn(async (path: string) => { files[path] = ""; }),
+					read: vi.fn(async (path: string) => {
+						if (!(path in files)) throw new Error("File not found");
+						return files[path];
+					}),
+					write: vi.fn(async (path: string, data: string) => {
+						await new Promise<void>((r) => { gate.pending.push(() => { files[path] = data; r(); }); });
+					}),
+				},
+			} as any;
+		}
+
+		it("concurrent addVersion to different fileIds preserves both versions", async () => {
+			const files: Record<string, string> = {};
+			const gate = { pending: [] as Array<() => void> };
+			const slowVault = makeSlowVault(files, gate);
+			const store = new EditHistoryStore(slowVault);
+
+			const p1 = store.addVersion("file-a", "a.md", { ts: 1, device: "D", content: "a" });
+			const p2 = store.addVersion("file-b", "b.md", { ts: 2, device: "D", content: "b" });
+
+			while (gate.pending.length < 1) await new Promise((r) => setTimeout(r, 0));
+			gate.pending.shift()!();
+			await p1;
+			while (gate.pending.length < 1) await new Promise((r) => setTimeout(r, 0));
+			gate.pending.shift()!();
+			await p2;
+
+			const data = JSON.parse(files[HISTORY_PATH]!);
+			expect(data.entries["file-a"]).toBeDefined();
+			expect(data.entries["file-b"]).toBeDefined();
+		});
+	});
 });
