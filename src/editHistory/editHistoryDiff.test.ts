@@ -20,4 +20,9 @@ describe("computeLineHunks", () => {
 	it("returns empty array when content is unchanged", () => {
 		expect(computeLineHunks("x\ny\nz", "x\ny\nz")).toEqual([]);
 	});
+
+	it("emits one hunk at s=0 for prepended lines", () => {
+		const hunks = computeLineHunks("a\nb", "HEAD\na\nb");
+		expect(hunks).toEqual([{ s: 0, d: 0, a: ["HEAD"] }]);
+	});
 });
