@@ -194,4 +194,9 @@ describe("segmentLines", () => {
 			{ kind: "retain", text: "c" },
 		]);
 	});
+
+	it("drops trailing newline (no empty row)", () => {
+		const result = segmentLines([[0, "a\n"]]);
+		expect(result).toEqual([{ kind: "retain", text: "a" }]);
+	});
 });
