@@ -377,4 +377,8 @@ describe("buildHunks", () => {
 		expect(result.length).toBe(1);
 		expect(result[0]!.kind).toBe("hunk");
 	});
+
+	it("DEFAULT_CONTEXT_LINES is 3", () => {
+		expect(DEFAULT_CONTEXT_LINES).toBe(3);
+	});
 });
