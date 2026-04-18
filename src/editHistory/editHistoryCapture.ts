@@ -171,8 +171,15 @@ export class EditHistoryCapture {
 	private async promoteFromDb(fileId: string): Promise<void> {
 		const pending = await this.pendingDb.get(fileId);
 		if (!pending) return;
-		await this.pendingDb.remove(fileId);
-		await this.captureSnapshot(fileId, pending.path, pending.content);
+		try {
+			await this.captureSnapshot(fileId, pending.path, pending.content);
+			await this.pendingDb.remove(fileId);
+		} catch (e) {
+			logWarn(
+				"editHistoryCapture: promoteFromDb failed, keeping pending edit for recovery",
+				e,
+			);
+		}
 	}
 
 	async captureSnapshot(
