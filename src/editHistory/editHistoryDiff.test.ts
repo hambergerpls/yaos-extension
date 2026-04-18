@@ -240,4 +240,10 @@ describe("buildHunks", () => {
 			{ kind: "retain", text: "b" },
 		], 3)).toEqual([]);
 	});
+
+	it("emits one hunk for a single change", () => {
+		expect(buildHunks([{ kind: "add", text: "x" }], 3)).toEqual([
+			{ kind: "hunk", lines: [{ kind: "add", text: "x" }] },
+		]);
+	});
 });
