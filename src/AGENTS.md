@@ -35,7 +35,7 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |
   +-- editHistory/
   |     +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
-  |     +-- editHistoryDiff.ts    (Pure: fast-diff wrappers + reconstructVersion + computeDiffSummary)
+  |     +-- editHistoryDiff.ts    (Pure: diff-match-patch line-hunks + reconstructVersion + computeDiffSummary)
   |     +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
   |     +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
   |     +-- editHistoryCapture.ts (Subscribes to Y.Map observeDeep + debounce/maxWait + batches into store)
@@ -71,7 +71,7 @@ Direct import relationships:
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
 | `notifications/notificationHelpers` | comments/types |
 | `editHistory/types` | nothing |
-| `editHistory/editHistoryDiff` | editHistory/types, fast-diff |
+| `editHistory/editHistoryDiff` | editHistory/types, diff-match-patch |
 | `editHistory/pendingEditsDb` | nothing |
 | `editHistory/editHistoryStore` | editHistory/types, obsidian (`Vault`), ../logger |
 | `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, editHistory/pendingEditsDb, ../logger |
@@ -450,30 +450,47 @@ Pure functions with no side effects:
 
 ### editHistory/types.ts -- Shared type definitions
 
-Exports `EditHistoryData`, `FileHistoryEntry`, `VersionSnapshot`, `DiffOp`.
+Exports `EditHistoryData`, `FileHistoryEntry`, `VersionSnapshot`, `LineHunk`.
 Pure data, no logic. A `VersionSnapshot` has either `content` (base version)
-or `diff` (delta version).
+or `hunks` (line-oriented delta). `EditHistoryData.version` is `2`;
+version-1 files (stored as char-level `diff` tuples by an older build) are
+silently wiped on load — see `editHistoryStore.load`.
+
+`LineHunk = { s: number; d: number; a: string[] }` encodes one change region
+relative to the reconstructed previous version. `s` is the 0-indexed starting
+line, `d` is the number of old lines deleted, `a` is the list of new lines
+inserted at that position. Old line text is *not* stored — derive it by
+reconstructing the previous version and slicing `[s, s+d)`.
 
 ### editHistory/editHistoryDiff.ts -- Diff + reconstruction
 
-Pure functions wrapping `fast-diff`:
-- `computeDiff(old, new)` -- returns `DiffOp[]`
-- `applyDiff(base, diffs)` -- returns new content
-- `reconstructVersion(entry, versionIndex)` -- walks delta chain from
-  `entry.baseIndex`; returns `null` if any delta is missing
-- `computeDiffSummary(diffs)` -- returns `{added, removed}` counted in
-  **lines**, not characters (newline-delimited)
+Pure functions built on `diff-match-patch` line-mode:
 
-Two additional pure helpers drive hunk-style rendering:
-`segmentLines(ops)` converts a `DiffOp[]` into a sequence of per-line
-`DiffLine` rows (`{ kind: "retain" | "add" | "del"; text }`), emitting
-paired del+add rows for lines containing both old and new content.
-`buildHunks(lines, context)` groups those rows into `HunkItem[]`
-— alternating `{ kind: "hunk"; lines }` and `{ kind: "skip"; count }`
-items. A hunk is a contiguous run of kept lines (changes plus up to
-`context` surrounding retains, with overlapping windows merged); a
-skip is a dropped run of retains. `DEFAULT_CONTEXT_LINES = 3` matches
-GitHub's default.
+- `computeLineHunks(old, new)` -- returns `LineHunk[]`. Splits both inputs
+  on `\n` (so `"a\n"` → `["a", ""]` and `""` → `[]`), hashes each unique
+  line to a single Unicode char, runs `dmp.diff_main` on the hashed
+  strings, then walks the resulting tuples to emit one hunk per contiguous
+  `-1`/`+1` run. The hand-rolled hasher is deliberate: `dmp`'s built-in
+  `diff_linesToChars_` keeps `\n` attached to each line and collapses
+  trailing-newline differences (`"a"` vs `"a\n"`) into a single token,
+  which breaks roundtrip semantics.
+- `applyLineHunks(base, hunks)` -- returns new content. Splits `base` on
+  `\n` (empty `""` is treated as 0 lines, not 1), walks `hunks` in
+  ascending `s`, splicing each in turn, then rejoins with `\n`.
+- `reconstructVersion(entry, versionIndex)` -- walks the delta chain from
+  `entry.baseIndex` applying `applyLineHunks` for each step; returns
+  `null` on a missing or content-less link.
+- `computeDiffSummary(hunks)` -- returns `{ added, removed }` computed as
+  `Σ h.a.length` and `Σ h.d` respectively (line-counted, not
+  character-counted).
+
+Two rendering helpers drive the hunk-style sidebar view:
+`buildHunks(lines, context)` groups a `DiffLine[]` into alternating
+`{ kind: "hunk"; lines }` and `{ kind: "skip"; count }` items by extending a
+`context`-wide window around each change line (overlapping windows merge).
+`DEFAULT_CONTEXT_LINES = 3` matches GitHub's default. The `DiffLine[]` itself
+is synthesized inside `editHistoryView` by walking `prevLines` + `LineHunk[]`;
+this module no longer owns a character-level diff op type.
 
 ### editHistory/editHistoryStore.ts -- JSON persistence
 
@@ -569,19 +586,24 @@ awaited `store.getEntry()` resolves, so only the latest call ever
 mutates the DOM.
 
 Each version entry renders an always-visible GitHub-style hunk diff
-below its summary line. Versions with stored `diff` ops and mid-chain
-rebase bases (`content`-only versions at `versionIndex > 0` that synthesize
-a diff against `reconstructVersion(entry, versionIndex - 1)`) pass their
-`DiffOp[]` through `segmentLines` + `buildHunks` and render as
-row-by-row blocks: one `.diff-hunk` container per hunk, one
-`.diff-line` per logical line with a `.diff-gutter` span (` ` / `+` / `-`)
-and a `.diff-line-text` span. Each row is additionally classed
-`.diff-retain-line` / `.diff-add-line` / `.diff-del-line` for background
-tint. Runs of unchanged lines outside the 3-line context window collapse
-into a `.diff-hunk-skip` marker (`… N unchanged lines`). The initial
-snapshot (`versionIndex === 0`) still renders as a single insert-styled
-`.diff-add` span truncated to 20 lines with a `… (N more lines)` marker
-— it does NOT use the hunk rendering. If reconstruction returns null for
+below its summary line. Both stored deltas (`version.hunks`) and
+mid-chain rebase bases (`content`-only versions at `versionIndex > 0` that
+synthesize hunks via `computeLineHunks(reconstructVersion(entry,
+versionIndex - 1), version.content)`) flow through one private helper,
+`renderLineHunks`. That helper splits `prevContent` on `\n`, walks the
+`LineHunk[]` emitting `{kind:"retain"}` rows from gaps between hunks,
+`{kind:"del"}` rows from the `[s, s+d)` slice of `prevLines`, and
+`{kind:"add"}` rows from `h.a`; feeds the resulting `DiffLine[]` through
+`buildHunks(_, 3)` for GitHub-style context windowing; and renders one
+`.diff-hunk` container per hunk, one `.diff-line` per row with a
+`.diff-gutter` (` ` / `+` / `-`) and `.diff-line-text`. Each row is
+additionally classed `.diff-retain-line` / `.diff-add-line` /
+`.diff-del-line` for background tint. Runs of unchanged lines outside
+the 3-line context window collapse into a `.diff-hunk-skip` marker
+(`… N unchanged lines`). The initial snapshot (`versionIndex === 0`)
+still renders as a single insert-styled `.diff-add` span truncated to
+20 lines with a `… (N more lines)` marker — it does NOT use the hunk
+rendering. If reconstruction returns null for
 a mid-chain base, a `.diff-unavailable` fallback label renders instead.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
