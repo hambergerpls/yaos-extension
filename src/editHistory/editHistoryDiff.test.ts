@@ -85,4 +85,15 @@ describe("applyLineHunks", () => {
 	it("produces empty string when all lines are deleted", () => {
 		expect(applyLineHunks("a\nb\nc", [{ s: 0, d: 3, a: [] }])).toBe("");
 	});
+
+	it("applies multiple disjoint hunks", () => {
+		const result = applyLineHunks(
+			"a\nb\nc\nd\ne",
+			[
+				{ s: 0, d: 1, a: ["A"] },
+				{ s: 4, d: 1, a: ["E"] },
+			],
+		);
+		expect(result).toBe("A\nb\nc\nd\nE");
+	});
 });
