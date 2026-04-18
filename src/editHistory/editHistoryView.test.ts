@@ -528,4 +528,52 @@ describe("EditHistoryView", () => {
 			expect(empties[0]!.textContent).toBe("No file selected");
 		});
 	});
+
+	describe("inline diff rendering", () => {
+		it("renders version.diff as classed add/del/retain spans", async () => {
+			const entry: FileHistoryEntry = {
+				path: "notes/x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: 1000, device: "DevA", content: "hello" },
+					{
+						ts: 2000,
+						device: "DevA",
+						diff: [[0, "he"], [-1, "llo"], [1, "y there"]],
+					},
+				],
+			};
+			const store = makeStore({ f1: entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const addSpans = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-add",
+			);
+			const delSpans = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-del",
+			);
+			const retainSpans = view.contentEl.querySelectorAll(
+				".yaos-extension-edit-history-diff-retain",
+			);
+
+			// At least one of each type appears across the entries
+			expect(addSpans.length).toBeGreaterThan(0);
+			expect(delSpans.length).toBeGreaterThan(0);
+			expect(retainSpans.length).toBeGreaterThan(0);
+
+			// Check the specific diff-version row contains the insert text "y there"
+			const insertTexts = Array.from(addSpans).map(s => s.textContent);
+			expect(insertTexts).toContain("y there");
+
+			// Check the specific deletion "llo"
+			const deleteTexts = Array.from(delSpans).map(s => s.textContent);
+			expect(deleteTexts).toContain("llo");
+
+			// Retain "he"
+			const retainTexts = Array.from(retainSpans).map(s => s.textContent);
+			expect(retainTexts).toContain("he");
+		});
+	});
 });
