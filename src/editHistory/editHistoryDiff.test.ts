@@ -274,4 +274,13 @@ describe("segmentLines", () => {
 			{ kind: "retain", text: "c" },
 		]);
 	});
+
+	it("emits retain/add/retain when a full line is inserted", () => {
+		const result = segmentLines([[0, "a\n"], [1, "b\n"], [0, "c"]]);
+		expect(result).toEqual([
+			{ kind: "retain", text: "a" },
+			{ kind: "add", text: "b" },
+			{ kind: "retain", text: "c" },
+		]);
+	});
 });
