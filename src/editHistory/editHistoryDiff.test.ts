@@ -215,4 +215,12 @@ describe("segmentLines", () => {
 			{ kind: "del", text: "gone" },
 		]);
 	});
+
+	it("emits del+add pair for a changed line (substitution)", () => {
+		const result = segmentLines([[0, "hello "], [-1, "world"], [1, "there"]]);
+		expect(result).toEqual([
+			{ kind: "del", text: "hello world" },
+			{ kind: "add", text: "hello there" },
+		]);
+	});
 });
