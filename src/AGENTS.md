@@ -464,6 +464,17 @@ Pure functions wrapping `fast-diff`:
 - `computeDiffSummary(diffs)` -- returns `{added, removed}` counted in
   **lines**, not characters (newline-delimited)
 
+Two additional pure helpers drive hunk-style rendering:
+`segmentLines(ops)` converts a `DiffOp[]` into a sequence of per-line
+`DiffLine` rows (`{ kind: "retain" | "add" | "del"; text }`), emitting
+paired del+add rows for lines containing both old and new content.
+`buildHunks(lines, context)` groups those rows into `HunkItem[]`
+— alternating `{ kind: "hunk"; lines }` and `{ kind: "skip"; count }`
+items. A hunk is a contiguous run of kept lines (changes plus up to
+`context` surrounding retains, with overlapping windows merged); a
+skip is a dropped run of retains. `DEFAULT_CONTEXT_LINES = 3` matches
+GitHub's default.
+
 ### editHistory/editHistoryStore.ts -- JSON persistence
 
 `EditHistoryStore` manages `.yaos-extension/edit-history.json` (synced via
@@ -557,15 +568,21 @@ the **newest** version's calendar date so they stay grouped.
 awaited `store.getEntry()` resolves, so only the latest call ever
 mutates the DOM.
 
-Each version entry renders an always-visible inline colored diff below its
-summary line. Versions with stored `diff` ops render directly as colored
-spans (`.diff-add` / `.diff-del` / `.diff-retain`). The initial snapshot
-(`versionIndex === 0`) renders as a single insert-styled block truncated to
-20 lines with a `… (N more lines)` marker when longer. Mid-chain rebase
-bases (`content`-only versions at `versionIndex > 0`) synthesize a diff
-against `reconstructVersion(entry, versionIndex - 1)` and render
-untruncated; if reconstruction returns null, a `.diff-unavailable` fallback
-label renders instead.
+Each version entry renders an always-visible GitHub-style hunk diff
+below its summary line. Versions with stored `diff` ops and mid-chain
+rebase bases (`content`-only versions at `versionIndex > 0` that synthesize
+a diff against `reconstructVersion(entry, versionIndex - 1)`) pass their
+`DiffOp[]` through `segmentLines` + `buildHunks` and render as
+row-by-row blocks: one `.diff-hunk` container per hunk, one
+`.diff-line` per logical line with a `.diff-gutter` span (` ` / `+` / `-`)
+and a `.diff-line-text` span. Each row is additionally classed
+`.diff-retain-line` / `.diff-add-line` / `.diff-del-line` for background
+tint. Runs of unchanged lines outside the 3-line context window collapse
+into a `.diff-hunk-skip` marker (`… N unchanged lines`). The initial
+snapshot (`versionIndex === 0`) still renders as a single insert-styled
+`.diff-add` span truncated to 20 lines with a `… (N more lines)` marker
+— it does NOT use the hunk rendering. If reconstruction returns null for
+a mid-chain base, a `.diff-unavailable` fallback label renders instead.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
 
