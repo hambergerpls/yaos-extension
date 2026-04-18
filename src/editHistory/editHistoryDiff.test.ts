@@ -16,4 +16,8 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("a\nb\nc", "");
 		expect(hunks).toEqual([{ s: 0, d: 3, a: [] }]);
 	});
+
+	it("returns empty array when content is unchanged", () => {
+		expect(computeLineHunks("x\ny\nz", "x\ny\nz")).toEqual([]);
+	});
 });
