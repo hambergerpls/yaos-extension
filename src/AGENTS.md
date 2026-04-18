@@ -34,12 +34,15 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |     +-- notificationHelpers.ts (Pure functions: createMentionNotifications, createReplyNotification)
   |
   +-- editHistory/
-        +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
-        +-- editHistoryDiff.ts    (Pure: fast-diff wrappers + reconstructVersion + computeDiffSummary)
-        +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
-        +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
-        +-- editHistoryCapture.ts (Subscribes to Y.Map observeDeep + debounce/maxWait + batches into store)
-        +-- editHistoryView.ts    (Obsidian ItemView: sidebar with date groups + session grouping)
+  |     +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
+  |     +-- editHistoryDiff.ts    (Pure: fast-diff wrappers + reconstructVersion + computeDiffSummary)
+  |     +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
+  |     +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
+  |     +-- editHistoryCapture.ts (Subscribes to Y.Map observeDeep + debounce/maxWait + batches into store)
+  |     +-- editHistoryView.ts    (Obsidian ItemView: sidebar with date groups + session grouping)
+  |
+  +-- utils/
+        +-- debounce.ts           (Trailing-edge debouncer for main.ts refresh coalescing)
 
 styles.css               (CSS overrides for cursor labels + status bar + comments + notifications + edit history)
 ```
@@ -48,7 +51,7 @@ Direct import relationships:
 
 | Module             | Imports from                        |
 |--------------------|-------------------------------------|
-| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, mentions/*, notifications/*, comments/editorDiscovery |
+| `main.ts`          | settings, yaosApi, presenceTracker, statusBar, comments/*, mentions/*, notifications/*, comments/editorDiscovery, utils/debounce |
 | `presenceTracker`  | yaosApi                             |
 | `statusBar`        | yaosApi (types only), settings (types only) |
 | `yaosApi`          | obsidian (`App` only)               |
@@ -73,6 +76,7 @@ Direct import relationships:
 | `editHistory/editHistoryStore` | editHistory/types, obsidian (`Vault`), ../logger |
 | `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, editHistory/pendingEditsDb, ../logger |
 | `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, obsidian (`ItemView`) |
+| `utils/debounce` | nothing |
 
 Siblings never import each other. `main.ts` is the only module that wires everything
 together.
@@ -469,9 +473,19 @@ via `saveData()` queue.
 Key methods:
 - `load()` / `save()` -- disk I/O
 - `getEntry(fileId)` -- returns `FileHistoryEntry | undefined`
+- `transaction<T>(fn)` -- atomic read-compute-write primitive
 - `addVersion(fileId, path, snap)` -- single version
 - `addVersions(batch)` -- batched writes for flush/recovery paths
 - `prune()` / `pruneEntry(fileId)` -- retention cleanup
+
+All mutating methods (`addVersion`, `addVersions`, `prune`, `pruneEntry`)
+are serialized through an internal `writeQueue: Promise<void>` so
+concurrent mutations can't interleave their load-modify-save cycles.
+The `transaction<T>(fn)` primitive exposes this atomicity to callers
+that need read-compute-write — `EditHistoryCapture` uses it to compute
+diffs and dedup decisions against an up-to-date entry snapshot. Reads
+(`getEntry`, `load`) remain unqueued because `adapter.write` is atomic
+at the filesystem level.
 
 Constructor: `new EditHistoryStore(vault, filePath)`.
 
@@ -511,6 +525,13 @@ Other responsibilities:
 - `flush()` and `stop()` both drain timers and promote any pending edits
 - `recoverOrphans()` promotes stale IDB entries on plugin load
 
+`captureSnapshot` and `batchCapture` both go through
+`EditHistoryStore.transaction` so the entry lookup, diff/rebase
+decision, and version append happen atomically against all other
+store mutations. `promoteFromDb` removes the IDB entry only after a
+successful capture; failures are warn-logged and keep the pending
+entry in IDB for `recoverOrphans` to retry on the next plugin load.
+
 Constructor: `new EditHistoryCapture(store, getDeviceName, settings, maxSizeBytes, pendingDb)`.
 
 ### editHistory/editHistoryView.ts -- Sidebar panel
@@ -537,6 +558,18 @@ awaited `store.getEntry()` resolves, so only the latest call ever
 mutates the DOM.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
+
+### utils/debounce.ts -- Trailing-edge debouncer
+
+Small stateful helper used by `main.ts` to coalesce burst refresh
+calls from workspace/vault listeners. `createDebouncer(ms)` returns
+a function that schedules a task after `ms` ms of quiescence, replacing
+any previously-scheduled task. Returns a promise that resolves when
+the scheduled task completes, so `await refreshXxx()` still has
+deterministic semantics. Used at 50 ms for `refreshCommentView`,
+`refreshEditHistoryView`, and `refreshNotifications`.
+
+Dependencies: none.
 
 ### settings.ts -- Configuration data
 
@@ -610,3 +643,7 @@ flow for immediate visual feedback when toggling peer dots.
   Both `InlineCommentPanel` and `CommentView` delegate to `CommentRenderer`.
 - **Comment/notification stores are siblings**. They never import each other.
   `main.ts` coordinates notification generation after comment operations.
+- **Store writes are serialized.** `EditHistoryStore` exposes
+  `transaction<T>(fn)` for callers that need atomic read-compute-write.
+  Direct callers of `addVersion`/`addVersions` get serialization for
+  free via the internal write queue.
