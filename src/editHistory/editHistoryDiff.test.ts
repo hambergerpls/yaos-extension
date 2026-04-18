@@ -39,4 +39,9 @@ describe("computeLineHunks", () => {
 		const hunks = computeLineHunks("a\nb\nc", "a\nc");
 		expect(hunks).toEqual([{ s: 1, d: 1, a: [] }]);
 	});
+
+	it("emits one hunk with d>0 and a.length>0 for a multi-line replacement", () => {
+		const hunks = computeLineHunks("a\nX\nY\nb", "a\nP\nQ\nR\nb");
+		expect(hunks).toEqual([{ s: 1, d: 2, a: ["P", "Q", "R"] }]);
+	});
 });
