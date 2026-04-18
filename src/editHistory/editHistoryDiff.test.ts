@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeLineHunks } from "./editHistoryDiff";
+import { computeLineHunks, applyLineHunks } from "./editHistoryDiff";
 
 describe("computeLineHunks", () => {
 	it("emits a single replace-one-line hunk for middle-line substitution", () => {
@@ -57,5 +57,12 @@ describe("computeLineHunks", () => {
 		// Changing "b" to "B" while keeping the trailing newline produces s=1, d=1.
 		const hunks = computeLineHunks("a\nb\n", "a\nB\n");
 		expect(hunks).toEqual([{ s: 1, d: 1, a: ["B"] }]);
+	});
+});
+
+describe("applyLineHunks", () => {
+	it("splices a single replace-one-line hunk", () => {
+		const result = applyLineHunks("a\nb\nc", [{ s: 1, d: 1, a: ["X"] }]);
+		expect(result).toBe("a\nX\nc");
 	});
 });
