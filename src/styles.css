@@ -1021,3 +1021,21 @@
 	border-bottom: 1px dashed var(--background-modifier-border);
 	margin: 2px 0;
 }
+
+.yaos-extension-edit-history-diff-word-add {
+	background-color: rgba(46, 160, 67, 0.35);
+	border-radius: 2px;
+	padding: 0 1px;
+}
+
+.yaos-extension-edit-history-diff-word-del {
+	background-color: rgba(248, 81, 73, 0.35);
+	border-radius: 2px;
+	padding: 0 1px;
+	text-decoration: line-through;
+	text-decoration-color: rgba(248, 81, 73, 0.6);
+}
+
+.yaos-extension-edit-history-diff-word-equal {
+	/* Inherits row-level tint from .diff-add-line / .diff-del-line. No own highlight. */
+}
