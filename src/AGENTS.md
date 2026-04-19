@@ -513,6 +513,13 @@ Pure functions built on `diff-match-patch` line-mode:
 - `computeDiffSummary(hunks)` -- returns `{ added, removed }` computed as
   `Σ h.a.length` and `Σ h.d` respectively (line-counted, not
   character-counted).
+- `pairLinesForWordDiff(lines)` -- takes a `DiffLine[]` (typically from one
+  rendered hunk) and returns `DiffLineWithWords[]`. Finds consecutive del-run
+  → add-run boundaries; pairs lines by index within the overlap; for each
+  pair, runs `dmp.diff_main` + `dmp.diff_cleanupSemantic` and attaches a
+  `WordDiffSegment[]` to both sides. Unpaired lines (pure add, pure del,
+  overflow when `d !== a.length`) keep `words` undefined. Pairs where both
+  lines exceed 2000 chars skip word diff for perf.
 
 Two rendering helpers drive the hunk-style sidebar view:
 `buildHunks(lines, context)` groups a `DiffLine[]` into alternating
@@ -645,6 +652,16 @@ dfb64-encoded bases render as decompressed plaintext. Mid-chain rebase
 bases are likewise decoded before the `computeLineHunks` synthesis. If
 reconstruction returns null for a mid-chain base, a `.diff-unavailable`
 fallback label renders instead.
+
+Within each rendered hunk, `renderLineHunks` pipes `item.lines` through
+`pairLinesForWordDiff` before emitting rows. Paired del/add rows render
+their `.diff-line-text` content as a sequence of nested `.diff-word-equal`,
+`.diff-word-del`, and `.diff-word-add` spans derived from dmp's
+char-level diff (with `diff_cleanupSemantic` applied). Unpaired lines and
+size-guarded oversize pairs render the full line as a single plain text
+node. Row-level background tint from `.diff-add-line` / `.diff-del-line`
+still applies; the word-level spans layer a stronger tint on the actually-
+changed characters.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
 
