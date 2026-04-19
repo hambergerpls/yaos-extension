@@ -360,4 +360,15 @@ describe("pairLinesForWordDiff", () => {
 		expect((result[0] as any).words).toBeUndefined();
 		expect((result[2] as any).words).toBeUndefined();
 	});
+
+	it("skips word diff when both lines exceed 2000 chars", () => {
+		const big = "x".repeat(2500);
+		const big2 = "x".repeat(2500) + "Y";
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: big },
+			{ kind: "add", text: big2 },
+		]);
+		expect((result[0] as any).words).toBeUndefined();
+		expect((result[1] as any).words).toBeUndefined();
+	});
 });
