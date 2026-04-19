@@ -176,7 +176,10 @@ export default class YaosExtensionPlugin extends Plugin {
     );
 
     if (this.settings.showEditHistory) {
-      this.editHistoryStore = new EditHistoryStore(this.app.vault);
+      this.editHistoryStore = new EditHistoryStore(
+        this.app.vault,
+        () => getLocalDeviceName(this.app),
+      );
 
       this.registerView(EDIT_HISTORY_VIEW_TYPE, (leaf) => {
         return new EditHistoryView(
