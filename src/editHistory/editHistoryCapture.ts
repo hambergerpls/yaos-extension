@@ -2,6 +2,7 @@ import type { EditHistoryStore } from "./editHistoryStore";
 import { computeLineHunks, reconstructVersion } from "./editHistoryDiff";
 import { encodeContent } from "./editHistoryCompress";
 import type { PendingEditsDb } from "./pendingEditsDb";
+import { isLocalOrigin } from "./editHistoryOrigin";
 import { logWarn } from "../logger";
 
 export interface CaptureSettings {
@@ -26,10 +27,11 @@ export class EditHistoryCapture {
 	private settings: CaptureSettings;
 	private pendingTimers: Map<string, FileTimer> = new Map();
 	private dailyCounts: Map<string, { date: string; count: number }> = new Map();
-	private observeDeepHandler: ((...args: unknown[]) => void) | null = null;
+	private observeDeepHandler: ((events: any, txn: unknown) => void) | null = null;
 	private idToText: any = null;
 	private getFilePath: ((fileId: string) => string | undefined) | null = null;
 	private getText: ((fileId: string) => { toJSON: () => string } | null | undefined) | null = null;
+	private getProvider: (() => unknown) | null = null;
 	private maxSizeBytes: number;
 	private pendingDb: PendingEditsDb;
 
@@ -51,13 +53,15 @@ export class EditHistoryCapture {
 		idToText: any,
 		getFilePath: (fileId: string) => string | undefined,
 		getText: (fileId: string) => { toJSON: () => string } | null | undefined,
+		getProvider?: () => unknown,
 	): void {
 		this.idToText = idToText;
 		this.getFilePath = getFilePath;
 		this.getText = getText;
+		this.getProvider = getProvider ?? null;
 
-		this.observeDeepHandler = (events: any) => {
-			this.onIdToTextObserveDeep(events);
+		this.observeDeepHandler = (events: any, txn: unknown) => {
+			this.onIdToTextObserveDeep(events, txn);
 		};
 		idToText.observeDeep(this.observeDeepHandler);
 	}
@@ -70,6 +74,7 @@ export class EditHistoryCapture {
 		this.idToText = null;
 		this.getFilePath = null;
 		this.getText = null;
+		this.getProvider = null;
 		for (const { idle, max } of this.pendingTimers.values()) {
 			clearTimeout(idle);
 			if (max) clearTimeout(max);
@@ -244,8 +249,16 @@ export class EditHistoryCapture {
 		}
 	}
 
-	private onIdToTextObserveDeep(events: any[]): void {
+	private onIdToTextObserveDeep(events: any[], txn: unknown): void {
 		if (!this.getFilePath || !this.getText) return;
+
+		// Remote-origin transactions (applied by the y-websocket provider) are
+		// edits from another device. Skip them so we don't mis-attribute remote
+		// content to this device, starve the debounce idle timer, or capture
+		// versions for files the local user never touched.
+		const providerRef = this.getProvider?.() ?? undefined;
+		const txnOrigin = (txn as { origin?: unknown } | undefined)?.origin;
+		if (!isLocalOrigin(txnOrigin, providerRef)) return;
 
 		const fileIds = new Set<string>();
 
