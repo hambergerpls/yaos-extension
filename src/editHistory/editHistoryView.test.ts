@@ -866,5 +866,26 @@ describe("EditHistoryView", () => {
 			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-equal").length).toBeGreaterThan(0);
 			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBeGreaterThan(0);
 		});
+
+		it("renders pure-add lines as plain text (no word spans)", async () => {
+			const t0 = 1_700_000_000_000;
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: t0, device: "DevA", content: "keep" },
+					{ ts: t0 + 1000, device: "DevA", hunks: [{ s: 1, d: 0, a: ["NEW LINE"] }] },
+				],
+			};
+			const store = makeStore({ "f1": entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const addText = view.contentEl.querySelector(".yaos-extension-edit-history-diff-add-line .yaos-extension-edit-history-diff-line-text");
+			expect(addText).not.toBeNull();
+			expect(addText!.textContent).toBe("NEW LINE");
+			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBe(0);
+		});
 	});
 });
