@@ -48,4 +48,10 @@ describe("encodeContent", () => {
 	it("decodes an empty-string raw value as empty string", () => {
 		expect(decodeContent("", undefined)).toBe("");
 	});
+
+	it("throws a descriptive error on unknown encoding", () => {
+		expect(() => decodeContent("abc", "gzip" as any)).toThrow(
+			/editHistoryCompress.*unknown encoding.*gzip/,
+		);
+	});
 });
