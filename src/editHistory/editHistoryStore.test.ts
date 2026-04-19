@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EditHistoryStore } from "./editHistoryStore";
 import type { EditHistoryData, FileHistoryEntry, VersionSnapshot } from "./types";
 
-const HISTORY_PATH = ".yaos-extension/edit-history.json";
+const TEST_DEVICE = "test-device";
+const HISTORY_PATH = `.yaos-extension/edit-history-${TEST_DEVICE}.json`;
 
 function makeVault(files: Record<string, string>) {
 	return {
@@ -35,7 +36,7 @@ describe("EditHistoryStore", () => {
 	});
 
 	function createStore() {
-		return new EditHistoryStore(vault);
+		return new EditHistoryStore(vault, () => TEST_DEVICE);
 	}
 
 	describe("load", () => {
@@ -51,7 +52,7 @@ describe("EditHistoryStore", () => {
 				entries: { "abc": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(stored) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 			const data = await store.load();
 			expect(data.entries["abc"]).toBeDefined();
 			expect(data.entries["abc"]!.path).toBe("test.md");
@@ -59,7 +60,7 @@ describe("EditHistoryStore", () => {
 
 		it("returns default data when file contains invalid JSON", async () => {
 			vault = makeVault({ [HISTORY_PATH]: "not json" });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 			const data = await store.load();
 			expect(data).toEqual({ version: 3, entries: {} });
 		});
@@ -78,7 +79,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(staleV2) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			const data = await store.load();
 			expect(data).toEqual({ version: 3, entries: {} });
@@ -110,7 +111,7 @@ describe("EditHistoryStore", () => {
 	describe("addVersion", () => {
 		it("creates a new entry for an unknown file ID", async () => {
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 3, entries: {} }) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			const snap: VersionSnapshot = {
 				ts: 2000,
@@ -132,7 +133,7 @@ describe("EditHistoryStore", () => {
 				entries: { "file1": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			const snap: VersionSnapshot = {
 				ts: 2000,
@@ -151,7 +152,7 @@ describe("EditHistoryStore", () => {
 				entries: { "file1": makeEntry({ path: "old.md" }) },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.addVersion("file1", "new-path.md", {
 				ts: 2000,
@@ -179,7 +180,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.addVersion("file1", "test.md", {
 				ts: 4000,
@@ -197,7 +198,7 @@ describe("EditHistoryStore", () => {
 		it("returns the entry for a file ID", async () => {
 			const entry = makeEntry();
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 3, entries: { "file1": entry } }) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			const result = await store.getEntry("file1");
 			expect(result).toBeDefined();
@@ -229,7 +230,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(data) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.prune(30);
 
@@ -255,7 +256,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(data) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.prune(30);
 
@@ -286,7 +287,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(data) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.prune(30);
 
@@ -307,7 +308,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(data) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.pruneEntry("deleted-file");
 
@@ -339,7 +340,7 @@ describe("EditHistoryStore", () => {
 				},
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(data) });
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.prune(30);
 
@@ -367,7 +368,7 @@ describe("EditHistoryStore", () => {
 			vault = makeVault({
 				[HISTORY_PATH]: JSON.stringify({ version: 3, entries: { "file-x": entry } }),
 			});
-			const store = new EditHistoryStore(vault);
+			const store = new EditHistoryStore(vault, () => TEST_DEVICE);
 
 			await store.prune(30);
 
@@ -401,7 +402,7 @@ describe("EditHistoryStore", () => {
 			const files: Record<string, string> = {};
 			const gate = { pending: [] as Array<() => void> };
 			const slowVault = makeSlowVault(files, gate);
-			const store = new EditHistoryStore(slowVault);
+			const store = new EditHistoryStore(slowVault, () => TEST_DEVICE);
 
 			const p1 = store.addVersion("file-a", "a.md", { ts: 1, device: "D", content: "a" });
 			const p2 = store.addVersion("file-b", "b.md", { ts: 2, device: "D", content: "b" });
@@ -422,7 +423,7 @@ describe("EditHistoryStore", () => {
 			const files: Record<string, string> = {};
 			const gate = { pending: [] as Array<() => void> };
 			const slowVault = makeSlowVault(files, gate);
-			const store = new EditHistoryStore(slowVault);
+			const store = new EditHistoryStore(slowVault, () => TEST_DEVICE);
 
 			const p1 = store.addVersion("file-a", "a.md", { ts: 1, device: "D", content: "v1" });
 			const p2 = store.addVersion("file-a", "a.md", { ts: 2, device: "D", hunks: [{ s: 0, d: 1, a: ["v12"] }] });

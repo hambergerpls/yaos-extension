@@ -5,14 +5,30 @@ import { reconstructVersion } from "./editHistoryDiff";
 import { encodeContent } from "./editHistoryCompress";
 import { logWarn } from "../logger";
 
-const HISTORY_PATH = ".yaos-extension/edit-history.json";
+const HISTORY_DIR = ".yaos-extension";
+
+/** Sanitize a device name for safe use in a filename. */
+function normalizeDeviceIdForFilename(raw: string): string {
+	const trimmed = raw.trim();
+	if (trimmed.length === 0) return "unknown";
+	// Restrict to filename-safe chars. Replace anything else with "_".
+	return trimmed.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
 export class EditHistoryStore {
 	private vault: Vault;
+	private getDeviceId: () => string;
 	private writeQueue: Promise<void> = Promise.resolve();
 
-	constructor(vault: Vault) {
+	constructor(vault: Vault, getDeviceId: () => string) {
 		this.vault = vault;
+		this.getDeviceId = getDeviceId;
+	}
+
+	/** Resolved per-I/O so device rename in YAOS settings takes effect. */
+	private currentPath(): string {
+		const id = normalizeDeviceIdForFilename(this.getDeviceId());
+		return `${HISTORY_DIR}/edit-history-${id}.json`;
 	}
 
 	private enqueue<T>(op: () => Promise<T>): Promise<T> {
@@ -23,10 +39,11 @@ export class EditHistoryStore {
 	}
 
 	async load(): Promise<EditHistoryData> {
+		const path = this.currentPath();
 		try {
-			const exists = await this.vault.adapter.exists(HISTORY_PATH);
+			const exists = await this.vault.adapter.exists(path);
 			if (!exists) return DEFAULT_EDIT_HISTORY_DATA();
-			const raw = await this.vault.adapter.read(HISTORY_PATH);
+			const raw = await this.vault.adapter.read(path);
 			const parsed = JSON.parse(raw) as { version?: number };
 			if (parsed?.version !== 3) {
 				// Breaking format upgrade: silently wipe stale entries.
@@ -42,11 +59,10 @@ export class EditHistoryStore {
 	}
 
 	async save(data: EditHistoryData): Promise<void> {
-		const dir = ".yaos-extension";
-		if (!(await this.vault.adapter.exists(dir))) {
-			await this.vault.adapter.mkdir(dir);
+		if (!(await this.vault.adapter.exists(HISTORY_DIR))) {
+			await this.vault.adapter.mkdir(HISTORY_DIR);
 		}
-		await this.vault.adapter.write(HISTORY_PATH, JSON.stringify(data, null, "\t"));
+		await this.vault.adapter.write(this.currentPath(), JSON.stringify(data, null, "\t"));
 	}
 
 	/**

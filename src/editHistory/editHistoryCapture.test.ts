@@ -700,7 +700,7 @@ describe("EditHistoryCapture", () => {
 				},
 			} as any;
 
-			const realStore = new EditHistoryStore(vault);
+			const realStore = new EditHistoryStore(vault, () => "test-device");
 			const { capture: c, pendingDb: db } = await makeCaptureWithDb(realStore, { debounceMs: 1000 });
 
 			try {
