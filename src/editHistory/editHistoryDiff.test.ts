@@ -350,4 +350,14 @@ describe("pairLinesForWordDiff", () => {
 		expect((result[1] as any).words).toBeDefined(); // paired with del[0]
 		expect((result[2] as any).words).toBeUndefined(); // overflow add, unpaired
 	});
+
+	it("does not pair across a retain line", () => {
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: "a" },
+			{ kind: "retain", text: "MIDDLE" },
+			{ kind: "add", text: "b" },
+		]);
+		expect((result[0] as any).words).toBeUndefined();
+		expect((result[2] as any).words).toBeUndefined();
+	});
 });
