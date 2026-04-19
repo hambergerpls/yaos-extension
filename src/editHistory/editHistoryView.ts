@@ -8,6 +8,7 @@ import {
 	DEFAULT_CONTEXT_LINES,
 	type DiffLine,
 } from "./editHistoryDiff";
+import { decodeContent } from "./editHistoryCompress";
 import type { FileHistoryEntry, LineHunk, VersionSnapshot } from "./types";
 
 export const EDIT_HISTORY_VIEW_TYPE = "yaos-extension-edit-history";
@@ -308,7 +309,8 @@ export class EditHistoryView extends ItemView {
 		if (versionIndex === 0) {
 			const labelEl = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-label" });
 			labelEl.textContent = "Initial snapshot";
-			const { text, remainingLines } = truncateByLines(version.content, 20);
+			const raw = decodeContent(version.content, version.contentEnc);
+			const { text, remainingLines } = truncateByLines(raw, 20);
 			// Initial snapshot renders as a single add span (unchanged from prior behavior).
 			const addSpan = container.createSpan({ cls: "yaos-extension-edit-history-diff-add" });
 			addSpan.textContent = text;
@@ -326,7 +328,8 @@ export class EditHistoryView extends ItemView {
 			label.textContent = "(diff unavailable)";
 			return;
 		}
-		const synthetic = computeLineHunks(prev, version.content);
+		const raw = decodeContent(version.content, version.contentEnc);
+		const synthetic = computeLineHunks(prev, raw);
 		this.renderLineHunks(container, prev, synthetic);
 	}
 

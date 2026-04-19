@@ -19,7 +19,7 @@ function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry 
 function makeStore(entries: Record<string, FileHistoryEntry> = {}) {
 	return {
 		getEntry: vi.fn(async (fileId: string) => entries[fileId]),
-		load: vi.fn(async () => ({ version: 2, entries })),
+		load: vi.fn(async () => ({ version: 3, entries })),
 		save: vi.fn(async () => {}),
 		addVersion: vi.fn(async () => {}),
 		prune: vi.fn(async () => {}),
