@@ -39,6 +39,7 @@
 	},
 	"dependencies": {
 		"diff-match-patch": "^1.0.5",
+		"fflate": "^0.8.2",
 		"obsidian": "latest"
 	}
 }
