@@ -1,5 +1,6 @@
 import DiffMatchPatch from "diff-match-patch";
 import type { FileHistoryEntry, LineHunk } from "./types";
+import { decodeContent } from "./editHistoryCompress";
 
 export type { LineHunk } from "./types";
 
@@ -100,7 +101,7 @@ export function reconstructVersion(
 	const base = entry.versions[entry.baseIndex];
 	if (!base || base.content === undefined) return null;
 
-	let content = base.content;
+	let content = decodeContent(base.content, base.contentEnc);
 	for (let i = entry.baseIndex + 1; i <= versionIndex; i++) {
 		const version = entry.versions[i];
 		if (!version || !version.hunks) return null;
