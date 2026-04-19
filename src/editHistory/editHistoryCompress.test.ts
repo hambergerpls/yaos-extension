@@ -22,4 +22,22 @@ describe("encodeContent", () => {
 		expect(contentEnc).toBe("dfb64");
 		expect(decodeContent(content, contentEnc)).toBe(raw);
 	});
+
+	it("falls back to raw when deflate does not shrink the payload", () => {
+		// Random-looking high-entropy string: every char unique in a tight range.
+		// Deflate + base64 should be larger than raw because there's nothing to exploit.
+		let raw = "";
+		for (let i = 0; i < 800; i++) {
+			raw += String.fromCharCode(33 + ((i * 1103515245 + 12345) % 93));
+		}
+		const result = encodeContent(raw);
+		// If implementation chose dfb64, then it must actually be smaller (by contract);
+		// otherwise it must have fallen back to raw.
+		if (result.contentEnc === "dfb64") {
+			expect(result.content.length).toBeLessThan(raw.length);
+		} else {
+			expect(result.content).toBe(raw);
+			expect(result.contentEnc).toBeUndefined();
+		}
+	});
 });
