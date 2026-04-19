@@ -327,4 +327,16 @@ describe("pairLinesForWordDiff", () => {
 		expect(del.words!.some((s) => s.kind === "del")).toBe(true);
 		expect(add.words!.some((s) => s.kind === "add")).toBe(true);
 	});
+
+	it("pairs multi-line del+add runs by index", () => {
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: "foo one" },
+			{ kind: "del", text: "foo two" },
+			{ kind: "add", text: "bar one" },
+			{ kind: "add", text: "bar two" },
+		]);
+		for (const line of result) {
+			expect((line as any).words).toBeDefined();
+		}
+	});
 });
