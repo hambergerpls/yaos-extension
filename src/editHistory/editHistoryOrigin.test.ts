@@ -38,4 +38,11 @@ describe("isLocalOrigin", () => {
 		const lookalike = { id: 1 };
 		expect(isLocalOrigin(lookalike, provider)).toBe(true);
 	});
+
+	it("treats a null provider as 'no provider known', not as a sentinel matching null origins", () => {
+		// Guards against fail-closed behavior if a caller ever passes provider=null
+		// directly (bypassing the `?? undefined` normalization in the capture path).
+		expect(isLocalOrigin(null, null)).toBe(true);
+		expect(isLocalOrigin("anything", null)).toBe(true);
+	});
 });
