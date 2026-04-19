@@ -60,4 +60,22 @@ describe("encodeContent", () => {
 		const { content, contentEnc } = encodeContent(raw);
 		expect(decodeContent(content, contentEnc)).toBe(raw);
 	});
+
+	it("roundtrips a variety of hand-picked strings", () => {
+		const cases = [
+			"",
+			"x",
+			"short",
+			"a".repeat(520),
+			"abc\n".repeat(200),
+			"# Heading\n\nParagraph.\n\n- item1\n- item2\n".repeat(40),
+			"line with trailing newline\n",
+			"\n\n\nonly blank lines\n\n",
+			"one\ntwo\nthree",
+		];
+		for (const raw of cases) {
+			const { content, contentEnc } = encodeContent(raw);
+			expect(decodeContent(content, contentEnc)).toBe(raw);
+		}
+	});
 });
