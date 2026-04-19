@@ -887,5 +887,26 @@ describe("EditHistoryView", () => {
 			expect(addText!.textContent).toBe("NEW LINE");
 			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBe(0);
 		});
+
+		it("renders typo-fix del/add with semantic-merged word spans", async () => {
+			const t0 = 1_700_000_000_000;
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: t0, device: "DevA", content: "teh quick brown fox" },
+					{ ts: t0 + 1000, device: "DevA", hunks: [{ s: 0, d: 1, a: ["the quick brown fox"] }] },
+				],
+			};
+			const store = makeStore({ "f1": entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const delText = view.contentEl.querySelector(".yaos-extension-edit-history-diff-del-line .yaos-extension-edit-history-diff-line-text");
+			expect(delText!.textContent).toBe("teh quick brown fox");
+			expect(delText!.querySelectorAll(".yaos-extension-edit-history-diff-word-del").length).toBeGreaterThan(0);
+			expect(delText!.querySelectorAll(".yaos-extension-edit-history-diff-word-equal").length).toBeGreaterThan(0);
+		});
 	});
 });
