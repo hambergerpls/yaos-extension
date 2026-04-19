@@ -160,3 +160,14 @@ export function buildHunks(lines: DiffLine[], context: number): HunkItem[] {
 	}
 	return items;
 }
+
+export type WordDiffSegment = { kind: "equal" | "add" | "del"; text: string };
+
+export type DiffLineWithWords =
+	| { kind: "retain"; text: string }
+	| { kind: "add"; text: string; words?: WordDiffSegment[] }
+	| { kind: "del"; text: string; words?: WordDiffSegment[] };
+
+export function pairLinesForWordDiff(_lines: DiffLine[]): DiffLineWithWords[] {
+	throw new Error("not implemented");
+}

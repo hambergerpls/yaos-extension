@@ -5,8 +5,10 @@ import {
 	reconstructVersion,
 	computeDiffSummary,
 	buildHunks,
+	pairLinesForWordDiff,
 	DEFAULT_CONTEXT_LINES,
 	type DiffLine,
+	type DiffLineWithWords,
 } from "./editHistoryDiff";
 import { encodeContent } from "./editHistoryCompress";
 import type { FileHistoryEntry } from "./types";
@@ -283,5 +285,11 @@ describe("buildHunks", () => {
 
 	it("DEFAULT_CONTEXT_LINES is 3", () => {
 		expect(DEFAULT_CONTEXT_LINES).toBe(3);
+	});
+});
+
+describe("pairLinesForWordDiff", () => {
+	it("returns an empty array for empty input", () => {
+		expect(pairLinesForWordDiff([])).toEqual([]);
 	});
 });
