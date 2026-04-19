@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { encodeContent, decodeContent } from "./editHistoryCompress";
 
 describe("encodeContent", () => {
-	it("returns raw plain text when below the 512-byte threshold", () => {
+	it("returns raw plain text when below the 512-character threshold", () => {
 		const result = encodeContent("short text");
 		expect(result.content).toBe("short text");
 		expect(result.contentEnc).toBeUndefined();
