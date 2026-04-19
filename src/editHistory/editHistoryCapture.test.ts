@@ -368,6 +368,33 @@ describe("EditHistoryCapture", () => {
 				fastDb.close();
 			}
 		});
+
+		it("does not schedule capture when transaction origin is the provider (remote)", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
+			const getFilePath = vi.fn((_id: string) => "notes/remote.md");
+			const getText = vi.fn((_id: string) => ({ toJSON: () => "remote merged" }));
+			const provider = { role: "fake-provider" };
+			const getProvider = () => provider;
+
+			try {
+				fastCapture.start(idToText as any, getFilePath, getText, getProvider);
+
+				const handler = observeDeep.mock.calls[0]![0];
+				// Yjs observeDeep signature: (events, transaction)
+				const events = [{ path: ["remoteFile"] }];
+				const txn = { origin: provider };
+				handler(events, txn);
+
+				await sleep(100);
+				expect(captured.calls).toHaveLength(0);
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
 	});
 
 	it("cleans up timers on stop", async () => {
