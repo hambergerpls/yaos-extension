@@ -292,4 +292,12 @@ describe("pairLinesForWordDiff", () => {
 	it("returns an empty array for empty input", () => {
 		expect(pairLinesForWordDiff([])).toEqual([]);
 	});
+
+	it("passes through retain-only input unchanged", () => {
+		const input: DiffLine[] = [
+			{ kind: "retain", text: "a" },
+			{ kind: "retain", text: "b" },
+		];
+		expect(pairLinesForWordDiff(input)).toEqual(input);
+	});
 });
