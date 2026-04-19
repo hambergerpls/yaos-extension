@@ -395,6 +395,57 @@ describe("EditHistoryCapture", () => {
 				fastDb.close();
 			}
 		});
+
+		it("still schedules capture when transaction origin is local (object, not provider)", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
+			const getFilePath = vi.fn((_id: string) => "notes/local.md");
+			const getText = vi.fn((_id: string) => ({ toJSON: () => "local edit" }));
+			const provider = { role: "fake-provider" };
+			const ySyncConfig = { role: "y-codemirror" };
+			const getProvider = () => provider;
+
+			try {
+				fastCapture.start(idToText as any, getFilePath, getText, getProvider);
+
+				const handler = observeDeep.mock.calls[0]![0];
+				const events = [{ path: ["localFile"] }];
+				const txn = { origin: ySyncConfig };
+				handler(events, txn);
+
+				await sleep(100);
+				expect(captured.calls).toHaveLength(1);
+				expect(captured.calls[0].snap.content).toBe("local edit");
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
+
+		it("still schedules when no getProvider was supplied (back-compat)", async () => {
+			const { capture: fastCapture, pendingDb: fastDb } = await makeCaptureWithDb(store, { debounceMs: 20 });
+			const observeDeep = vi.fn();
+			const idToText = { observeDeep, unobserveDeep: vi.fn() };
+			const getFilePath = vi.fn(() => "notes/nop.md");
+			const getText = vi.fn(() => ({ toJSON: () => "nop" }));
+
+			try {
+				// Old-style 3-arg start (no getProvider). Handler must still fire.
+				fastCapture.start(idToText as any, getFilePath, getText);
+
+				const handler = observeDeep.mock.calls[0]![0];
+				handler([{ path: ["f"] }], { origin: "anything" });
+
+				await sleep(100);
+				expect(captured.calls).toHaveLength(1);
+			} finally {
+				fastCapture.stop();
+				await fastDb.clear();
+				fastDb.close();
+			}
+		});
 	});
 
 	it("cleans up timers on stop", async () => {
