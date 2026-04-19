@@ -699,6 +699,15 @@ describe("EditHistoryCapture", () => {
 			expect(snap.content).toBe("short");
 			expect(snap.contentEnc).toBeUndefined();
 		});
+
+		it("deduplicates against a dfb64-encoded last base when content matches", async () => {
+			const largeRaw = "repeating line content here\n".repeat(100);
+			await capture.captureSnapshot("f1", "a.md", largeRaw);
+			await capture.captureSnapshot("f1", "a.md", largeRaw); // dedup: no-op
+
+			// Only the first capture should have been recorded; the second is deduped.
+			expect(captured.calls).toHaveLength(1);
+		});
 	});
 
 	describe("recovery on start", () => {
