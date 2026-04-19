@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EditHistoryStore } from "./editHistoryStore";
+import { EditHistoryStore, listAllHistoryFiles } from "./editHistoryStore";
 import type { EditHistoryData, FileHistoryEntry, VersionSnapshot } from "./types";
 
 const TEST_DEVICE = "test-device";
@@ -563,6 +563,54 @@ describe("EditHistoryStore", () => {
 			expect(data.entries.f1?.versions[0]?.content).toBe("keep me");
 			// Legacy file is untouched (merged-on-read handles it in Part 3)
 			expect(files.has(".yaos-extension/edit-history.json")).toBe(true);
+		});
+	});
+
+	describe("listAllHistoryFiles", () => {
+		it("returns every edit-history-*.json under .yaos-extension, plus legacy if present", async () => {
+			const mockVault = {
+				adapter: {
+					list: vi.fn(async (dir: string) => {
+						if (dir === ".yaos-extension") {
+							return {
+								files: [
+									".yaos-extension/edit-history-alpha.json",
+									".yaos-extension/edit-history-beta.json",
+									".yaos-extension/edit-history.json",
+									".yaos-extension/something-else.json",
+									".yaos-extension/edit-history-device_with_underscores.json",
+								],
+								folders: [],
+							};
+						}
+						return { files: [], folders: [] };
+					}),
+					exists: vi.fn(async () => true),
+				},
+			};
+
+			const paths = await listAllHistoryFiles(mockVault as any);
+
+			expect(paths).toEqual(
+				expect.arrayContaining([
+					".yaos-extension/edit-history-alpha.json",
+					".yaos-extension/edit-history-beta.json",
+					".yaos-extension/edit-history.json",
+					".yaos-extension/edit-history-device_with_underscores.json",
+				]),
+			);
+			expect(paths).not.toContain(".yaos-extension/something-else.json");
+		});
+
+		it("returns [] when the directory does not exist", async () => {
+			const mockVault = {
+				adapter: {
+					list: vi.fn(async () => { throw new Error("ENOENT"); }),
+					exists: vi.fn(async () => false),
+				},
+			};
+			const paths = await listAllHistoryFiles(mockVault as any);
+			expect(paths).toEqual([]);
 		});
 	});
 });
