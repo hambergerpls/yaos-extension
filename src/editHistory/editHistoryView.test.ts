@@ -990,4 +990,55 @@ describe("EditHistoryView", () => {
 			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBe(0);
 		});
 	});
+
+	describe("cross-device merged timeline", () => {
+		function makeMergedMockVault(files: Map<string, string>) {
+			return {
+				adapter: {
+					exists: vi.fn(async (p: string) => files.has(p) || p === ".yaos-extension"),
+					read: vi.fn(async (p: string) => files.get(p) ?? ""),
+					list: vi.fn(async () => ({
+						files: Array.from(files.keys()),
+						folders: [],
+					})),
+				},
+			} as any;
+		}
+
+		it("renders versions from two device files ordered by ts", async () => {
+			const files = new Map<string, string>();
+			files.set(".yaos-extension/edit-history-alpha.json", JSON.stringify({
+				version: 3,
+				entries: {
+					f1: {
+						path: "notes/shared.md",
+						baseIndex: 0,
+						versions: [{ ts: 1, device: "alpha", content: "alpha-edit" }],
+					},
+				},
+			}));
+			files.set(".yaos-extension/edit-history-beta.json", JSON.stringify({
+				version: 3,
+				entries: {
+					f1: {
+						path: "notes/shared.md",
+						baseIndex: 0,
+						versions: [{ ts: 2, device: "beta", content: "beta-edit" }],
+					},
+				},
+			}));
+
+			const vault = makeMergedMockVault(files);
+			const store = new EditHistoryStore(vault, () => "alpha");
+			const view = new EditHistoryView({} as any, store, vault, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const devices = view.contentEl
+				.querySelectorAll(".yaos-extension-edit-history-device");
+			// Newest-first render order: beta then alpha
+			expect(devices[0]?.textContent).toContain("beta");
+			expect(devices[1]?.textContent).toContain("alpha");
+		});
+	});
 });
