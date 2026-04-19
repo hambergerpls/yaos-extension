@@ -6,6 +6,7 @@ import { encodeContent } from "./editHistoryCompress";
 import { logWarn } from "../logger";
 
 const HISTORY_DIR = ".yaos-extension";
+const LEGACY_HISTORY_PATH = `${HISTORY_DIR}/edit-history.json`;
 
 /** Sanitize a device name for safe use in a filename. */
 function normalizeDeviceIdForFilename(raw: string): string {
@@ -41,8 +42,20 @@ export class EditHistoryStore {
 	async load(): Promise<EditHistoryData> {
 		const path = this.currentPath();
 		try {
-			const exists = await this.vault.adapter.exists(path);
-			if (!exists) return DEFAULT_EDIT_HISTORY_DATA();
+			const perDeviceExists = await this.vault.adapter.exists(path);
+
+			if (!perDeviceExists) {
+				const legacyExists = await this.vault.adapter.exists(LEGACY_HISTORY_PATH);
+				if (legacyExists) {
+					// One-shot migration: rename legacy → per-device, then proceed.
+					const raw = await this.vault.adapter.read(LEGACY_HISTORY_PATH);
+					await this.vault.adapter.write(path, raw);
+					await this.vault.adapter.remove(LEGACY_HISTORY_PATH);
+				} else {
+					return DEFAULT_EDIT_HISTORY_DATA();
+				}
+			}
+
 			const raw = await this.vault.adapter.read(path);
 			const parsed = JSON.parse(raw) as { version?: number };
 			if (parsed?.version !== 3) {
