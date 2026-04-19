@@ -339,4 +339,15 @@ describe("pairLinesForWordDiff", () => {
 			expect((line as any).words).toBeDefined();
 		}
 	});
+
+	it("only pairs the overlap when del and add runs differ in length", () => {
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: "x" },
+			{ kind: "add", text: "y" },
+			{ kind: "add", text: "z" },
+		]);
+		expect((result[0] as any).words).toBeDefined(); // paired
+		expect((result[1] as any).words).toBeDefined(); // paired with del[0]
+		expect((result[2] as any).words).toBeUndefined(); // overflow add, unpaired
+	});
 });
