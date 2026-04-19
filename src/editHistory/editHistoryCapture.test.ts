@@ -680,6 +680,18 @@ describe("EditHistoryCapture", () => {
 		});
 	});
 
+	describe("content encoding", () => {
+		it("encodes large base content as dfb64 on new-entry capture", async () => {
+			const largeRaw = "repeating line content here\n".repeat(100);
+			await capture.captureSnapshot("f1", "a.md", largeRaw);
+
+			expect(captured.calls).toHaveLength(1);
+			const snap = captured.calls[0].snap;
+			expect(snap.contentEnc).toBe("dfb64");
+			expect(snap.content.length).toBeLessThan(largeRaw.length);
+		});
+	});
+
 	describe("recovery on start", () => {
 		it("promotes orphaned IndexedDB entries on start", async () => {
 			pendingDbCounter++;
