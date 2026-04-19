@@ -1093,5 +1093,31 @@ describe("EditHistoryView", () => {
 			expect(devices[0]?.textContent).toContain("beta");
 			expect(devices[1]?.textContent).toContain("alpha");
 		});
+
+		it("restore button on a beta version calls onRestore with beta absolute content", async () => {
+			const files = new Map<string, string>();
+			files.set(".yaos-extension/edit-history-alpha.json", JSON.stringify({
+				version: 3,
+				entries: { f1: { path: "notes/x.md", baseIndex: 0, versions: [{ ts: 1, device: "alpha", content: "A" }] } },
+			}));
+			files.set(".yaos-extension/edit-history-beta.json", JSON.stringify({
+				version: 3,
+				entries: { f1: { path: "notes/x.md", baseIndex: 0, versions: [{ ts: 2, device: "beta", content: "B" }] } },
+			}));
+
+			const vault = makeMergedMockVault(files);
+			const restored: string[] = [];
+			const store = new EditHistoryStore(vault, () => "alpha");
+			const view = new EditHistoryView({} as any, store, vault, (c: string) => restored.push(c));
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const restoreButtons = view.contentEl.querySelectorAll<HTMLButtonElement>(
+				".yaos-extension-edit-history-restore",
+			);
+			// Newest-first: button[0] = beta, button[1] = alpha
+			restoreButtons[0]!.click();
+			expect(restored).toEqual(["B"]);
+		});
 	});
 });
