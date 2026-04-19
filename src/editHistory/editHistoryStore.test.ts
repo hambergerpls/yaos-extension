@@ -501,4 +501,68 @@ describe("EditHistoryStore", () => {
 			expect(writes.has(".yaos-extension/edit-history-unknown.json")).toBe(true);
 		});
 	});
+
+	describe("legacy migration", () => {
+		it("renames .yaos-extension/edit-history.json → edit-history-<deviceId>.json on load when per-device file is absent", async () => {
+			const files = new Map<string, string>();
+			files.set(".yaos-extension/edit-history.json", JSON.stringify({
+				version: 3,
+				entries: {
+					f1: {
+						path: "a.md",
+						baseIndex: 0,
+						versions: [{ ts: 1, device: "legacy-device", content: "hi" }],
+					},
+				},
+			}));
+
+			const mockVault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => files.has(p)),
+					read: vi.fn(async (p: string) => files.get(p) ?? ""),
+					write: vi.fn(async (p: string, data: string) => { files.set(p, data); }),
+					remove: vi.fn(async (p: string) => { files.delete(p); }),
+					mkdir: vi.fn(async () => {}),
+					list: vi.fn(async () => ({ files: [], folders: [] })),
+				},
+			};
+
+			const store = new EditHistoryStore(mockVault as any, () => "device-alpha");
+			const data = await store.load();
+
+			// Data carried over
+			expect(data.entries.f1?.versions[0]?.content).toBe("hi");
+			// Legacy file removed, per-device file exists
+			expect(files.has(".yaos-extension/edit-history.json")).toBe(false);
+			expect(files.has(".yaos-extension/edit-history-device-alpha.json")).toBe(true);
+		});
+
+		it("does NOT touch legacy file when per-device file already exists", async () => {
+			const files = new Map<string, string>();
+			files.set(".yaos-extension/edit-history.json", JSON.stringify({ version: 3, entries: {} }));
+			files.set(".yaos-extension/edit-history-device-alpha.json", JSON.stringify({
+				version: 3,
+				entries: { f1: { path: "a.md", baseIndex: 0, versions: [{ ts: 9, device: "device-alpha", content: "keep me" }] } },
+			}));
+
+			const mockVault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => files.has(p)),
+					read: vi.fn(async (p: string) => files.get(p) ?? ""),
+					write: vi.fn(async (p: string, data: string) => { files.set(p, data); }),
+					remove: vi.fn(async (p: string) => { files.delete(p); }),
+					mkdir: vi.fn(async () => {}),
+					list: vi.fn(async () => ({ files: [], folders: [] })),
+				},
+			};
+
+			const store = new EditHistoryStore(mockVault as any, () => "device-alpha");
+			const data = await store.load();
+
+			// Per-device file wins
+			expect(data.entries.f1?.versions[0]?.content).toBe("keep me");
+			// Legacy file is untouched (merged-on-read handles it in Part 3)
+			expect(files.has(".yaos-extension/edit-history.json")).toBe(true);
+		});
+	});
 });
