@@ -5,8 +5,11 @@ import {
 	computeDiffSummary,
 	computeLineHunks,
 	buildHunks,
+	pairLinesForWordDiff,
 	DEFAULT_CONTEXT_LINES,
 	type DiffLine,
+	type DiffLineWithWords,
+	type WordDiffSegment,
 } from "./editHistoryDiff";
 import { decodeContent } from "./editHistoryCompress";
 import type { FileHistoryEntry, LineHunk, VersionSnapshot } from "./types";
@@ -365,7 +368,8 @@ export class EditHistoryView extends ItemView {
 				continue;
 			}
 			const hunkEl = container.createDiv({ cls: "yaos-extension-edit-history-diff-hunk" });
-			for (const line of item.lines) {
+			const paired = pairLinesForWordDiff(item.lines);
+			for (const line of paired) {
 				let lineCls: string;
 				let gutterChar: string;
 				if (line.kind === "retain") {
@@ -382,7 +386,23 @@ export class EditHistoryView extends ItemView {
 				const gutter = rowEl.createSpan({ cls: "yaos-extension-edit-history-diff-gutter" });
 				gutter.textContent = gutterChar;
 				const textEl = rowEl.createSpan({ cls: "yaos-extension-edit-history-diff-line-text" });
-				textEl.textContent = line.text;
+
+				const words = (line as DiffLineWithWords & { words?: WordDiffSegment[] }).words;
+				if (!words) {
+					textEl.textContent = line.text;
+				} else {
+					for (const seg of words) {
+						const segEl = textEl.createSpan({
+							cls:
+								seg.kind === "equal"
+									? "yaos-extension-edit-history-diff-word-equal"
+									: seg.kind === "add"
+										? "yaos-extension-edit-history-diff-word-add"
+										: "yaos-extension-edit-history-diff-word-del",
+						});
+						segEl.textContent = seg.text;
+					}
+				}
 			}
 		}
 	}
