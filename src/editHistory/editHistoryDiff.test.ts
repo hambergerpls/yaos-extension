@@ -8,6 +8,7 @@ import {
 	DEFAULT_CONTEXT_LINES,
 	type DiffLine,
 } from "./editHistoryDiff";
+import { encodeContent } from "./editHistoryCompress";
 import type { FileHistoryEntry } from "./types";
 
 describe("computeLineHunks", () => {
@@ -203,6 +204,18 @@ describe("reconstructVersion", () => {
 	it("returns null for empty versions array", () => {
 		const entry: FileHistoryEntry = { path: "t.md", baseIndex: 0, versions: [] };
 		expect(reconstructVersion(entry, 0)).toBeNull();
+	});
+
+	it("decodes base content stored as dfb64", () => {
+		const raw = "line0\nline1\nline2\n".repeat(50); // > 512 bytes, compresses
+		const { content, contentEnc } = encodeContent(raw);
+		expect(contentEnc).toBe("dfb64"); // sanity: we actually test the encoded path
+		const entry: FileHistoryEntry = {
+			path: "t.md",
+			baseIndex: 0,
+			versions: [{ ts: 1, device: "d", content, contentEnc }],
+		};
+		expect(reconstructVersion(entry, 0)).toBe(raw);
 	});
 });
 
