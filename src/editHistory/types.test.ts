@@ -46,16 +46,16 @@ describe("FileHistoryEntry", () => {
 describe("EditHistoryData", () => {
 	it("has version and entries map", () => {
 		const data: EditHistoryData = {
-			version: 2,
+			version: 3,
 			entries: {},
 		};
-		expect(data.version).toBe(2);
+		expect(data.version).toBe(3);
 		expect(Object.keys(data.entries)).toHaveLength(0);
 	});
 
 	it("maps file IDs to FileHistoryEntry", () => {
 		const data: EditHistoryData = {
-			version: 2,
+			version: 3,
 			entries: {
 				"abc123": {
 					path: "notes/test.md",
@@ -72,9 +72,9 @@ describe("EditHistoryData", () => {
 });
 
 describe("DEFAULT_EDIT_HISTORY_DATA", () => {
-	it("returns a fresh empty EditHistoryData with version 2", () => {
+	it("returns a fresh empty EditHistoryData with version 3", () => {
 		const data = DEFAULT_EDIT_HISTORY_DATA();
-		expect(data).toEqual({ version: 2, entries: {} });
+		expect(data).toEqual({ version: 3, entries: {} });
 	});
 
 	it("returns a new object each call (no shared mutation)", () => {

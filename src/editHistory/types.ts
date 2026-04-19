@@ -12,6 +12,8 @@ export interface VersionSnapshot {
 	device: string;
 	/** Full-text base snapshot. Present on the first version and every rebase. */
 	content?: string;
+	/** Encoding for `content`. Absent = plain UTF-8; "dfb64" = deflate-raw + base64. */
+	contentEnc?: "dfb64";
 	/** Line-oriented delta against the immediately preceding version. */
 	hunks?: LineHunk[];
 }
@@ -23,10 +25,10 @@ export interface FileHistoryEntry {
 }
 
 export interface EditHistoryData {
-	version: 2;
+	version: 3;
 	entries: Record<string, FileHistoryEntry>;
 }
 
 export function DEFAULT_EDIT_HISTORY_DATA(): EditHistoryData {
-	return { version: 2, entries: {} };
+	return { version: 3, entries: {} };
 }
