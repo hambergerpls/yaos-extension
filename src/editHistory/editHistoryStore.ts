@@ -2,6 +2,7 @@ import type { Vault } from "obsidian";
 import type { EditHistoryData, FileHistoryEntry, VersionSnapshot } from "./types";
 import { DEFAULT_EDIT_HISTORY_DATA } from "./types";
 import { reconstructVersion } from "./editHistoryDiff";
+import { encodeContent } from "./editHistoryCompress";
 import { logWarn } from "../logger";
 
 const HISTORY_PATH = ".yaos-extension/edit-history.json";
@@ -27,7 +28,7 @@ export class EditHistoryStore {
 			if (!exists) return DEFAULT_EDIT_HISTORY_DATA();
 			const raw = await this.vault.adapter.read(HISTORY_PATH);
 			const parsed = JSON.parse(raw) as { version?: number };
-			if (parsed?.version !== 2) {
+			if (parsed?.version !== 3) {
 				// Breaking format upgrade: silently wipe stale entries.
 				const fresh = DEFAULT_EDIT_HISTORY_DATA();
 				await this.save(fresh);
@@ -130,7 +131,8 @@ export class EditHistoryStore {
 					const newBaseContent = reconstructVersion(entry, firstRecentIdx);
 					if (newBaseContent !== null) {
 						const remaining = entry.versions.slice(firstRecentIdx);
-						remaining[0] = { ...remaining[0]!, content: newBaseContent, hunks: undefined };
+						const { content, contentEnc } = encodeContent(newBaseContent);
+						remaining[0] = { ...remaining[0]!, content, contentEnc, hunks: undefined };
 						entry.versions = remaining;
 						entry.baseIndex = 0;
 					} else {

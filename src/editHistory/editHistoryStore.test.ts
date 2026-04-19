@@ -42,12 +42,12 @@ describe("EditHistoryStore", () => {
 		it("returns default data when file does not exist", async () => {
 			const store = createStore();
 			const data = await store.load();
-			expect(data).toEqual({ version: 2, entries: {} });
+			expect(data).toEqual({ version: 3, entries: {} });
 		});
 
 		it("returns parsed data when file exists", async () => {
 			const stored: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: { "abc": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(stored) });
@@ -61,31 +61,31 @@ describe("EditHistoryStore", () => {
 			vault = makeVault({ [HISTORY_PATH]: "not json" });
 			const store = new EditHistoryStore(vault);
 			const data = await store.load();
-			expect(data).toEqual({ version: 2, entries: {} });
+			expect(data).toEqual({ version: 3, entries: {} });
 		});
 
 		it("creates .yaos-extension directory if needed on save", async () => {
 			const store = createStore();
-			await store.save({ version: 2, entries: {} });
+			await store.save({ version: 3, entries: {} });
 			expect(vault.adapter.mkdir).toHaveBeenCalledWith(".yaos-extension");
 		});
 
-		it("wipes entries on load when stored version is not 2 (v1 → v2 migration)", async () => {
-			const staleV1 = {
-				version: 1,
+		it("wipes entries on load when stored version is not 3 (v2 → v3 migration)", async () => {
+			const staleV2 = {
+				version: 2,
 				entries: {
 					"file-a": { path: "a.md", baseIndex: 0, versions: [{ ts: 1, device: "d", content: "x" }] },
 				},
 			};
-			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(staleV1) });
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(staleV2) });
 			const store = new EditHistoryStore(vault);
 
 			const data = await store.load();
-			expect(data).toEqual({ version: 2, entries: {} });
+			expect(data).toEqual({ version: 3, entries: {} });
 
 			// And it should have persisted the wipe
 			const persisted = JSON.parse(vault.adapter.write.mock.calls[0][1]);
-			expect(persisted.version).toBe(2);
+			expect(persisted.version).toBe(3);
 			expect(persisted.entries).toEqual({});
 		});
 	});
@@ -94,7 +94,7 @@ describe("EditHistoryStore", () => {
 		it("writes data as JSON to the history file", async () => {
 			const store = createStore();
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: { "abc": makeEntry() },
 			};
 			await store.save(data);
@@ -109,7 +109,7 @@ describe("EditHistoryStore", () => {
 
 	describe("addVersion", () => {
 		it("creates a new entry for an unknown file ID", async () => {
-			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 2, entries: {} }) });
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 3, entries: {} }) });
 			const store = new EditHistoryStore(vault);
 
 			const snap: VersionSnapshot = {
@@ -128,7 +128,7 @@ describe("EditHistoryStore", () => {
 
 		it("appends a delta version to an existing entry", async () => {
 			const existing: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: { "file1": makeEntry() },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
@@ -147,7 +147,7 @@ describe("EditHistoryStore", () => {
 
 		it("updates the path on rename", async () => {
 			const existing: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: { "file1": makeEntry({ path: "old.md" }) },
 			};
 			vault = makeVault({ [HISTORY_PATH]: JSON.stringify(existing) });
@@ -165,7 +165,7 @@ describe("EditHistoryStore", () => {
 
 		it("updates baseIndex when a content snapshot is appended after deltas", async () => {
 			const existing: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"file1": {
 						path: "test.md",
@@ -196,7 +196,7 @@ describe("EditHistoryStore", () => {
 	describe("getEntry", () => {
 		it("returns the entry for a file ID", async () => {
 			const entry = makeEntry();
-			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 2, entries: { "file1": entry } }) });
+			vault = makeVault({ [HISTORY_PATH]: JSON.stringify({ version: 3, entries: { "file1": entry } }) });
 			const store = new EditHistoryStore(vault);
 
 			const result = await store.getEntry("file1");
@@ -218,7 +218,7 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"old-file": makeEntry({
 						versions: [{ ts: oldTs, device: "Dev1", content: "old" }],
@@ -244,7 +244,7 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"file1": makeEntry({
 						versions: [
@@ -272,7 +272,7 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 10 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"file1": {
 						path: "test.md",
@@ -300,7 +300,7 @@ describe("EditHistoryStore", () => {
 
 		it("removes entries for deleted file IDs", async () => {
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"deleted-file": makeEntry({ path: "gone.md" }),
 					"active-file": makeEntry({ path: "active.md" }),
@@ -323,7 +323,7 @@ describe("EditHistoryStore", () => {
 			const recentTs = now - 5 * 24 * 60 * 60 * 1000;
 
 			const data: EditHistoryData = {
-				version: 2,
+				version: 3,
 				entries: {
 					"file1": {
 						path: "test.md",
@@ -349,6 +349,34 @@ describe("EditHistoryStore", () => {
 			expect(entry.versions.length).toBeGreaterThanOrEqual(1);
 			expect(entry.baseIndex).toBeLessThan(entry.versions.length);
 			expect(entry.versions[entry.baseIndex].content).toBeDefined();
+		});
+
+		it("re-encodes a synthesized base through encodeContent during prune", async () => {
+			const oldTs = Date.now() - 40 * 24 * 60 * 60 * 1000; // > 30d
+			const recentTs = Date.now() - 1 * 24 * 60 * 60 * 1000;
+			const bigBase = "line\n".repeat(200); // > 512 bytes
+
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: oldTs, device: "d", content: bigBase },
+					{ ts: recentTs, device: "d", hunks: [{ s: 0, d: 0, a: ["added"] }] },
+				],
+			};
+			vault = makeVault({
+				[HISTORY_PATH]: JSON.stringify({ version: 3, entries: { "file-x": entry } }),
+			});
+			const store = new EditHistoryStore(vault);
+
+			await store.prune(30);
+
+			const persisted = JSON.parse(vault.adapter.write.mock.calls.at(-1)![1]);
+			const pruned = persisted.entries["file-x"];
+			expect(pruned.versions.length).toBe(1);
+			// The synthesized base should now be dfb64-encoded since it's large + compressible.
+			expect(pruned.versions[0].contentEnc).toBe("dfb64");
+			expect(pruned.versions[0].hunks).toBeUndefined();
 		});
 	});
 
