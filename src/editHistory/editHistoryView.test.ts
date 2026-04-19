@@ -813,4 +813,30 @@ describe("EditHistoryView", () => {
 			expect(unavailables.length).toBeGreaterThanOrEqual(1);
 		});
 	});
+
+	describe("encoded base decoding", () => {
+		it("decodes a dfb64 initial snapshot for rendering", async () => {
+			const { encodeContent } = await import("./editHistoryCompress");
+			// Must exceed 512-char threshold AND actually shrink so contentEnc === "dfb64".
+			const raw = "line A\nline B\nline C\n".repeat(50);
+			const { content, contentEnc } = encodeContent(raw);
+			// Sanity-check the fixture: we want to exercise the decode path.
+			expect(contentEnc).toBe("dfb64");
+
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [{ ts: 1000, device: "D", content, contentEnc }],
+			};
+			const store = makeStore({ "file1": entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("file1");
+
+			const addEl = view.contentEl.querySelector(".yaos-extension-edit-history-diff-add");
+			expect(addEl).not.toBeNull();
+			expect(addEl!.textContent).toContain("line A");
+			expect(addEl!.textContent).toContain("line B");
+		});
+	});
 });
