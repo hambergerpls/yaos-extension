@@ -1,5 +1,6 @@
 import type { EditHistoryStore } from "./editHistoryStore";
 import { computeLineHunks, reconstructVersion } from "./editHistoryDiff";
+import { encodeContent } from "./editHistoryCompress";
 import type { PendingEditsDb } from "./pendingEditsDb";
 import { logWarn } from "../logger";
 
@@ -141,10 +142,11 @@ export class EditHistoryCapture {
 
 				const entry = data.entries[edit.fileId];
 				if (!entry) {
+					const enc = encodeContent(edit.content);
 					data.entries[edit.fileId] = {
 						path: edit.path,
 						baseIndex: 0,
-						versions: [{ ts: Date.now(), device: this.getDeviceName(), content: edit.content }],
+						versions: [{ ts: Date.now(), device: this.getDeviceName(), content: enc.content, contentEnc: enc.contentEnc }],
 					};
 					accepted.push(edit.fileId);
 					continue;
@@ -156,7 +158,8 @@ export class EditHistoryCapture {
 				entry.path = edit.path;
 				const versionsSinceBase = entry.versions.length - entry.baseIndex;
 				if (versionsSinceBase >= this.settings.rebaseInterval || lastContent === null) {
-					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content: edit.content });
+					const enc = encodeContent(edit.content);
+					entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content: enc.content, contentEnc: enc.contentEnc });
 					entry.baseIndex = entry.versions.length - 1;
 				} else {
 					const hunks = computeLineHunks(lastContent, edit.content);
@@ -195,10 +198,11 @@ export class EditHistoryCapture {
 			const entry = data.entries[fileId];
 
 			if (!entry) {
+				const enc = encodeContent(content);
 				data.entries[fileId] = {
 					path,
 					baseIndex: 0,
-					versions: [{ ts: Date.now(), device: this.getDeviceName(), content }],
+					versions: [{ ts: Date.now(), device: this.getDeviceName(), content: enc.content, contentEnc: enc.contentEnc }],
 				};
 				didAdd = true;
 				return;
@@ -210,7 +214,8 @@ export class EditHistoryCapture {
 			entry.path = path;
 			const versionsSinceBase = entry.versions.length - entry.baseIndex;
 			if (versionsSinceBase >= this.settings.rebaseInterval || lastContent === null) {
-				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content });
+				const enc = encodeContent(content);
+				entry.versions.push({ ts: Date.now(), device: this.getDeviceName(), content: enc.content, contentEnc: enc.contentEnc });
 				entry.baseIndex = entry.versions.length - 1;
 			} else {
 				const hunks = computeLineHunks(lastContent, content);

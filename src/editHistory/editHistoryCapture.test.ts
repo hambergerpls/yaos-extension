@@ -10,7 +10,7 @@ function makeStore(captured: { calls: any[] }) {
 
 	return {
 		async load(): Promise<EditHistoryData> {
-			return { version: 2, entries };
+			return { version: 3, entries };
 		},
 		async save(data: EditHistoryData): Promise<void> {
 			Object.assign(entries, data.entries);
@@ -41,7 +41,7 @@ function makeStore(captured: { calls: any[] }) {
 			const pre: Record<string, number> = {};
 			for (const [id, e] of Object.entries(entries)) pre[id] = e.versions.length;
 
-			const data: EditHistoryData = { version: 2, entries };
+			const data: EditHistoryData = { version: 3, entries };
 			const result = await fn(data);
 
 			// Record one capture call per newly-appended version
@@ -658,7 +658,7 @@ describe("EditHistoryCapture", () => {
 				},
 				async addVersion() { throw new Error("disk full"); },
 				async addVersions() { throw new Error("disk full"); },
-				async load() { return { version: 2, entries: {} }; },
+				async load() { return { version: 3, entries: {} }; },
 				async save() { throw new Error("disk full"); },
 			} as any as EditHistoryStore;
 
