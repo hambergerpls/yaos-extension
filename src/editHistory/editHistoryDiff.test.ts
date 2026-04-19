@@ -312,4 +312,19 @@ describe("pairLinesForWordDiff", () => {
 		expect(result).toEqual([{ kind: "del", text: "bye" }]);
 		expect((result[0] as any).words).toBeUndefined();
 	});
+
+	it("pairs a single del/add and emits word segments", () => {
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: "hello world" },
+			{ kind: "add", text: "hello there" },
+		]);
+		const del = result[0] as DiffLineWithWords & { kind: "del" };
+		const add = result[1] as DiffLineWithWords & { kind: "add" };
+		expect(del.words).toBeDefined();
+		expect(add.words).toBeDefined();
+		expect(del.words![0]).toEqual({ kind: "equal", text: "hello " });
+		expect(add.words![0]).toEqual({ kind: "equal", text: "hello " });
+		expect(del.words!.some((s) => s.kind === "del")).toBe(true);
+		expect(add.words!.some((s) => s.kind === "add")).toBe(true);
+	});
 });
