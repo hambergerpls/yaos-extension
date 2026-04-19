@@ -82,6 +82,22 @@ describe("loadMergedEntry", () => {
 		expect(merged!.absoluteContents).toEqual(["ok"]);
 	});
 
+	it("includes legacy edit-history.json in the merge", async () => {
+		const files = new Map<string, string>();
+		files.set(".yaos-extension/edit-history.json", JSON.stringify({
+			version: 3,
+			entries: { fX: { path: "x.md", baseIndex: 0, versions: [{ ts: 0, device: "legacy", content: "legacy" }] } },
+		}));
+		files.set(".yaos-extension/edit-history-alpha.json", JSON.stringify({
+			version: 3,
+			entries: { fX: { path: "x.md", baseIndex: 0, versions: [{ ts: 5, device: "alpha", content: "alpha" }] } },
+		}));
+		const mockVault = makeMockVault(files);
+		const merged = await loadMergedEntry(mockVault, "fX");
+		expect(merged!.sourceDeviceIds).toEqual(["legacy", "alpha"]);
+		expect(merged!.absoluteContents).toEqual(["legacy", "alpha"]);
+	});
+
 	it("reconstructs device-local deltas before merging", async () => {
 		const files = new Map<string, string>();
 		files.set(".yaos-extension/edit-history-alpha.json", JSON.stringify({
