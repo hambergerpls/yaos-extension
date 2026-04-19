@@ -16,15 +16,45 @@ function makeEntry(overrides: Partial<FileHistoryEntry> = {}): FileHistoryEntry 
 	};
 }
 
-function makeStore(entries: Record<string, FileHistoryEntry> = {}) {
+/**
+ * Builds a vault fixture containing a single legacy history file that carries
+ * the provided entries. The view reads through `loadMergedEntry(vault, ...)`,
+ * so tests that only need a single-device history can use this helper instead
+ * of wiring per-device files by hand.
+ */
+function makeLegacyVault(entries: Record<string, FileHistoryEntry> = {}) {
+	const files = new Map<string, string>();
+	files.set(
+		".yaos-extension/edit-history.json",
+		JSON.stringify({ version: 3, entries }),
+	);
 	return {
+		adapter: {
+			exists: vi.fn(async (p: string) => files.has(p) || p === ".yaos-extension"),
+			read: vi.fn(async (p: string) => files.get(p) ?? ""),
+			list: vi.fn(async () => ({
+				files: Array.from(files.keys()),
+				folders: [],
+			})),
+		},
+	} as any;
+}
+
+function makeStore(entries: Record<string, FileHistoryEntry> = {}) {
+	const stub = {
 		getEntry: vi.fn(async (fileId: string) => entries[fileId]),
 		load: vi.fn(async () => ({ version: 3, entries })),
 		save: vi.fn(async () => {}),
 		addVersion: vi.fn(async () => {}),
 		prune: vi.fn(async () => {}),
 		pruneEntry: vi.fn(async () => {}),
-	} as unknown as EditHistoryStore;
+	} as unknown as EditHistoryStore & { __vault: any };
+	(stub as any).__vault = makeLegacyVault(entries);
+	return stub;
+}
+
+function vaultOf(store: any): any {
+	return store.__vault;
 }
 
 describe("EditHistoryView", () => {
@@ -34,19 +64,19 @@ describe("EditHistoryView", () => {
 
 	it("has correct view type", () => {
 		const store = makeStore();
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		expect(view.getViewType()).toBe(EDIT_HISTORY_VIEW_TYPE);
 	});
 
 	it("has display text 'Edit History'", () => {
 		const store = makeStore();
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		expect(view.getDisplayText()).toBe("Edit History");
 	});
 
 	it("renders empty state when no file is active", async () => {
 		const store = makeStore();
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh(null);
 
@@ -56,7 +86,7 @@ describe("EditHistoryView", () => {
 
 	it("renders empty state when file has no history", async () => {
 		const store = makeStore();
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("unknown-file-id");
 
@@ -67,7 +97,7 @@ describe("EditHistoryView", () => {
 	it("renders file path in header", async () => {
 		const entry = makeEntry();
 		const store = makeStore({ "file1": entry });
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -78,7 +108,7 @@ describe("EditHistoryView", () => {
 	it("renders version entries for a file", async () => {
 		const entry = makeEntry();
 		const store = makeStore({ "file1": entry });
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -89,7 +119,7 @@ describe("EditHistoryView", () => {
 	it("renders device name in each entry", async () => {
 		const entry = makeEntry();
 		const store = makeStore({ "file1": entry });
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -104,7 +134,7 @@ describe("EditHistoryView", () => {
 			versions: [{ ts, device: "Dev1", content: "hello" }],
 		});
 		const store = makeStore({ "file1": entry });
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -124,7 +154,7 @@ describe("EditHistoryView", () => {
 			],
 		});
 		const store = makeStore({ "file1": entry });
-		const view = new EditHistoryView({} as any, store, vi.fn());
+		const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -138,7 +168,7 @@ describe("EditHistoryView", () => {
 		});
 		const store = makeStore({ "file1": entry });
 		const onRestore = vi.fn();
-		const view = new EditHistoryView({} as any, store, onRestore);
+		const view = new EditHistoryView({} as any, store, vaultOf(store), onRestore);
 		await view.onOpen();
 		await view.refresh("file1");
 
@@ -162,7 +192,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -189,7 +219,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -213,7 +243,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -238,7 +268,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -262,7 +292,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -297,7 +327,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -327,7 +357,7 @@ describe("EditHistoryView", () => {
 			};
 			const store = makeStore({ f1: entry });
 			const onRestore = vi.fn();
-			const view = new EditHistoryView({} as any, store, onRestore);
+			const view = new EditHistoryView({} as any, store, vaultOf(store), onRestore);
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -355,7 +385,7 @@ describe("EditHistoryView", () => {
 				versions: [{ ts: t0, device: "DeviceA", content: "v0" }],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -384,7 +414,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -413,7 +443,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -440,9 +470,9 @@ describe("EditHistoryView", () => {
 	});
 
 	describe("refresh race", () => {
-		// A deferred promise helper — gives us manual control of when
-		// `store.getEntry()` resolves, so we can drive the interleaving
-		// that causes the bug deterministically.
+		// A deferred promise helper — gives us manual control of when the
+		// async read inside `loadMergedEntry` resolves, so we can drive the
+		// interleaving that causes the bug deterministically.
 		type Deferred<T> = {
 			promise: Promise<T>;
 			resolve: (v: T) => void;
@@ -455,6 +485,24 @@ describe("EditHistoryView", () => {
 			return { promise, resolve };
 		}
 
+		/** Build a vault whose `adapter.read` returns the next deferred from `queue`. */
+		function makeGatedVault(queue: Array<Deferred<string>>) {
+			let callIndex = 0;
+			return {
+				adapter: {
+					exists: vi.fn(async (p: string) =>
+						p === ".yaos-extension" ||
+						p === ".yaos-extension/edit-history.json",
+					),
+					read: vi.fn(() => queue[callIndex++]!.promise),
+					list: vi.fn(async () => ({
+						files: [".yaos-extension/edit-history.json"],
+						folders: [],
+					})),
+				},
+			} as any;
+		}
+
 		it("concurrent refresh calls with same fileId render only one tree", async () => {
 			const entry: FileHistoryEntry = {
 				path: "notes/a.md",
@@ -464,16 +512,17 @@ describe("EditHistoryView", () => {
 					{ ts: 2000, device: "DeviceA", hunks: [{ s: 0, d: 1, a: ["v0v1"] }] },
 				],
 			};
+			const historyJson = JSON.stringify({
+				version: 3,
+				entries: { "file-id": entry },
+			});
 
-			const d1 = makeDeferred<FileHistoryEntry | undefined>();
-			const d2 = makeDeferred<FileHistoryEntry | undefined>();
-			const queue = [d1, d2];
-			let callIndex = 0;
-			const store = {
-				getEntry: vi.fn(async () => queue[callIndex++]!.promise),
-			} as unknown as EditHistoryStore;
+			const d1 = makeDeferred<string>();
+			const d2 = makeDeferred<string>();
+			const vault = makeGatedVault([d1, d2]);
+			const store = {} as EditHistoryStore;
 
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vault, vi.fn());
 			await view.onOpen();
 
 			// Fire two overlapping refreshes before any resolves.
@@ -482,8 +531,8 @@ describe("EditHistoryView", () => {
 
 			// Resolve the SECOND call first, then the first — forces the
 			// stale (first) refresh to resume AFTER the winning render.
-			d2.resolve(entry);
-			d1.resolve(entry);
+			d2.resolve(historyJson);
+			d1.resolve(historyJson);
 			await Promise.all([p1, p2]);
 
 			const headers = view.contentEl.querySelectorAll(
@@ -498,25 +547,29 @@ describe("EditHistoryView", () => {
 		});
 
 		it("late-resolving refresh does not clobber a newer null refresh", async () => {
-			// Scenario: refresh(fileId) starts, awaits store.getEntry (slow),
+			// Scenario: refresh(fileId) starts, awaits the vault read (slow),
 			// then refresh(null) is called (e.g. user navigated to a non-markdown
 			// leaf). The null call must win.
-			const d = makeDeferred<FileHistoryEntry | undefined>();
-			const store = {
-				getEntry: vi.fn(async () => d.promise),
-			} as unknown as EditHistoryStore;
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const d = makeDeferred<string>();
+			const vault = makeGatedVault([d]);
+			const store = {} as EditHistoryStore;
+			const view = new EditHistoryView({} as any, store, vault, vi.fn());
 			await view.onOpen();
 
 			const p1 = view.refresh("file-id");
 			const p2 = view.refresh(null);
 
 			// Resolve the stale fetch AFTER the null call has rendered.
-			d.resolve({
-				path: "stale.md",
-				baseIndex: 0,
-				versions: [{ ts: 1, device: "x", content: "x" }],
-			});
+			d.resolve(JSON.stringify({
+				version: 3,
+				entries: {
+					"file-id": {
+						path: "stale.md",
+						baseIndex: 0,
+						versions: [{ ts: 1, device: "x", content: "x" }],
+					},
+				},
+			}));
 			await Promise.all([p1, p2]);
 
 			expect(
@@ -545,7 +598,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -573,7 +626,7 @@ describe("EditHistoryView", () => {
 				versions: [{ ts: 1000, device: "DevA", content }],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -608,7 +661,7 @@ describe("EditHistoryView", () => {
 				versions: [{ ts: 1000, device: "DevA", content }],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -643,7 +696,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -679,7 +732,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -718,7 +771,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -761,7 +814,7 @@ describe("EditHistoryView", () => {
 			};
 
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -801,7 +854,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ f1: entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -829,7 +882,7 @@ describe("EditHistoryView", () => {
 				versions: [{ ts: 1000, device: "D", content, contentEnc }],
 			};
 			const store = makeStore({ "file1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("file1");
 
@@ -852,7 +905,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -878,7 +931,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -899,7 +952,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -920,7 +973,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -949,7 +1002,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 
@@ -978,7 +1031,7 @@ describe("EditHistoryView", () => {
 				],
 			};
 			const store = makeStore({ "f1": entry });
-			const view = new EditHistoryView({} as any, store, vi.fn());
+			const view = new EditHistoryView({} as any, store, vaultOf(store), vi.fn());
 			await view.onOpen();
 			await view.refresh("f1");
 

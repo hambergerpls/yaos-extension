@@ -1,8 +1,51 @@
 import type { Vault } from "obsidian";
 import type { EditHistoryData, FileHistoryEntry, VersionSnapshot } from "./types";
 import { listAllHistoryFiles } from "./editHistoryStore";
-import { reconstructVersion } from "./editHistoryDiff";
+import { applyLineHunks } from "./editHistoryDiff";
+import { decodeContent } from "./editHistoryCompress";
 import { logWarn } from "../logger";
+
+/**
+ * Reconstruct version at `i` by walking backward from `i` to the most recent
+ * content-bearing snapshot (the effective base for this sub-chain), then
+ * replaying hunks forward. Handles mid-chain rebases: if `versions[i]` itself
+ * has `content`, it IS its own base and is returned directly.
+ *
+ * This is stricter than `editHistoryDiff.reconstructVersion`, which only looks
+ * at `entry.baseIndex` and will return null when a mid-chain rebase base is
+ * requested. We need full timeline support here because the merged view
+ * renders every timeline position, including rebase snapshots that appear
+ * between deltas.
+ */
+function reconstructAt(entry: FileHistoryEntry, i: number): string | null {
+	if (i < 0 || i >= entry.versions.length) return null;
+
+	// Find the most recent version ≤ i that carries full content.
+	let baseIdx = -1;
+	for (let j = i; j >= 0; j--) {
+		const v = entry.versions[j];
+		if (v && v.content !== undefined) {
+			baseIdx = j;
+			break;
+		}
+	}
+	if (baseIdx === -1) return null;
+
+	const base = entry.versions[baseIdx]!;
+	let content: string;
+	try {
+		content = decodeContent(base.content!, base.contentEnc);
+	} catch {
+		return null;
+	}
+
+	for (let j = baseIdx + 1; j <= i; j++) {
+		const v = entry.versions[j];
+		if (!v || !v.hunks) return null;
+		content = applyLineHunks(content, v.hunks);
+	}
+	return content;
+}
 
 /**
  * A merged, cross-device view of a single fileId's history.
@@ -75,7 +118,7 @@ export async function loadMergedEntry(
 	for (const { deviceId, entry } of perDevice) {
 		for (let i = 0; i < entry.versions.length; i++) {
 			const version = entry.versions[i]!;
-			const absolute = reconstructVersion(entry, i);
+			const absolute = reconstructAt(entry, i);
 			flat.push({ ts: version.ts, version, absolute, deviceId });
 		}
 	}

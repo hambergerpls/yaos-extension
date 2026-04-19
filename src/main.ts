@@ -185,6 +185,7 @@ export default class YaosExtensionPlugin extends Plugin {
         return new EditHistoryView(
           leaf,
           this.editHistoryStore!,
+          this.app.vault,
           (content: string) => this.handleRestoreVersion(content),
         );
       });

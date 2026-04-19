@@ -1,7 +1,7 @@
-import { ItemView } from "obsidian";
+import { ItemView, type Vault } from "obsidian";
 import type { EditHistoryStore } from "./editHistoryStore";
+import { loadMergedEntry, type MergedEntry } from "./editHistoryMerge";
 import {
-	reconstructVersion,
 	computeDiffSummary,
 	computeLineHunks,
 	buildHunks,
@@ -11,8 +11,7 @@ import {
 	type DiffLineWithWords,
 	type WordDiffSegment,
 } from "./editHistoryDiff";
-import { decodeContent } from "./editHistoryCompress";
-import type { FileHistoryEntry, LineHunk, VersionSnapshot } from "./types";
+import type { LineHunk, VersionSnapshot } from "./types";
 
 export const EDIT_HISTORY_VIEW_TYPE = "yaos-extension-edit-history";
 
@@ -83,13 +82,20 @@ function getSessionId(s: Session): string {
 
 export class EditHistoryView extends ItemView {
 	private store: EditHistoryStore;
+	private vault: Vault;
 	private onRestore: (content: string) => void;
 	private expandedSessions: Set<string> = new Set();
 	private refreshGeneration = 0;
 
-	constructor(leaf: any, store: EditHistoryStore, onRestore: (content: string) => void) {
+	constructor(
+		leaf: any,
+		store: EditHistoryStore,
+		vault: Vault,
+		onRestore: (content: string) => void,
+	) {
 		super(leaf);
 		this.store = store;
+		this.vault = vault;
 		this.onRestore = onRestore;
 	}
 
@@ -119,16 +125,16 @@ export class EditHistoryView extends ItemView {
 			return;
 		}
 
-		const entry = await this.store.getEntry(fileId);
+		const merged = await loadMergedEntry(this.vault, fileId);
 		if (gen !== this.refreshGeneration) return;
 
 		this.contentEl.empty();
-		if (!entry || entry.versions.length === 0) {
+		if (!merged || merged.versions.length === 0) {
 			this.renderEmpty("No edit history for this file");
 			return;
 		}
 
-		this.renderHistory(entry);
+		this.renderMergedHistory(merged);
 	}
 
 	private renderEmpty(message: string): void {
@@ -136,14 +142,15 @@ export class EditHistoryView extends ItemView {
 		el.textContent = message;
 	}
 
-	private renderHistory(entry: FileHistoryEntry): void {
+	private renderMergedHistory(merged: MergedEntry): void {
 		const header = this.contentEl.createDiv({ cls: "yaos-extension-edit-history-file-path" });
-		header.textContent = entry.path;
+		header.textContent = merged.path;
 
-		// Newest-first ordering
+		// Newest-first ordering. originalIndex is the index into the merged
+		// timeline so renderDiffForMerged / restore can look up absoluteContents.
 		const items: Array<{ version: VersionSnapshot; originalIndex: number }> = [];
-		for (let i = entry.versions.length - 1; i >= 0; i--) {
-			items.push({ version: entry.versions[i]!, originalIndex: i });
+		for (let i = merged.versions.length - 1; i >= 0; i--) {
+			items.push({ version: merged.versions[i]!, originalIndex: i });
 		}
 
 		const sessions = groupIntoSessions(items);
@@ -164,15 +171,15 @@ export class EditHistoryView extends ItemView {
 				if (session.versions.length === 1) {
 					// Single-version session → render as a regular entry (no session chrome)
 					const item = session.versions[0]!;
-					this.renderEntry(groupEl, entry, item.version, item.originalIndex);
+					this.renderEntry(groupEl, merged, item.version, item.originalIndex);
 				} else {
-					this.renderSession(groupEl, entry, session);
+					this.renderSession(groupEl, merged, session);
 				}
 			}
 		}
 	}
 
-	private renderSession(parent: HTMLElement, entry: FileHistoryEntry, session: Session): void {
+	private renderSession(parent: HTMLElement, merged: MergedEntry, session: Session): void {
 		const sessionId = getSessionId(session);
 		const sessionEl = parent.createDiv({ cls: "yaos-extension-edit-history-session" });
 
@@ -224,7 +231,7 @@ export class EditHistoryView extends ItemView {
 		}
 
 		for (const { version, originalIndex } of session.versions) {
-			this.renderEntry(childrenEl, entry, version, originalIndex);
+			this.renderEntry(childrenEl, merged, version, originalIndex);
 		}
 
 		header.addEventListener("click", () => {
@@ -242,7 +249,7 @@ export class EditHistoryView extends ItemView {
 
 	private renderEntry(
 		parent: HTMLElement,
-		entry: FileHistoryEntry,
+		merged: MergedEntry,
 		version: VersionSnapshot,
 		versionIndex: number,
 	): void {
@@ -268,7 +275,7 @@ export class EditHistoryView extends ItemView {
 			summaryEl.textContent = parts.join(" ") + " lines";
 		}
 
-		this.renderDiffContent(el, entry, version, versionIndex);
+		this.renderDiffForMerged(el, merged, versionIndex);
 
 		const actions = el.createDiv({ cls: "yaos-extension-edit-history-actions" });
 		const restoreBtn = actions.createEl("button", {
@@ -277,44 +284,30 @@ export class EditHistoryView extends ItemView {
 		});
 		restoreBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			const content = reconstructVersion(entry, versionIndex);
-			if (content !== null) {
+			const content = merged.absoluteContents[versionIndex];
+			if (content !== null && content !== undefined) {
 				this.onRestore(content);
 			}
 		});
 	}
 
-	private renderDiffContent(
+	private renderDiffForMerged(
 		parent: HTMLElement,
-		entry: FileHistoryEntry,
-		version: VersionSnapshot,
-		versionIndex: number,
+		merged: MergedEntry,
+		i: number,
 	): void {
 		const container = parent.createDiv({ cls: "yaos-extension-edit-history-diff" });
-
-		if (version.hunks) {
-			const prev = reconstructVersion(entry, versionIndex - 1);
-			if (prev === null) {
-				const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
-				label.textContent = "(diff unavailable)";
-				return;
-			}
-			this.renderLineHunks(container, prev, version.hunks);
-			return;
-		}
-
-		if (version.content === undefined) {
+		const current = merged.absoluteContents[i];
+		if (current === null || current === undefined) {
 			const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
 			label.textContent = "(diff unavailable)";
 			return;
 		}
 
-		if (versionIndex === 0) {
+		if (i === 0) {
 			const labelEl = container.createSpan({ cls: "yaos-extension-edit-history-diff-initial-label" });
 			labelEl.textContent = "Initial snapshot";
-			const raw = decodeContent(version.content, version.contentEnc);
-			const { text, remainingLines } = truncateByLines(raw, 20);
-			// Initial snapshot renders as a single add span (unchanged from prior behavior).
+			const { text, remainingLines } = truncateByLines(current, 20);
 			const addSpan = container.createSpan({ cls: "yaos-extension-edit-history-diff-add" });
 			addSpan.textContent = text;
 			if (remainingLines > 0) {
@@ -324,15 +317,13 @@ export class EditHistoryView extends ItemView {
 			return;
 		}
 
-		// Mid-chain rebase base: synthesize line-hunks against reconstructed previous.
-		const prev = reconstructVersion(entry, versionIndex - 1);
-		if (prev === null) {
+		const prev = merged.absoluteContents[i - 1];
+		if (prev === null || prev === undefined) {
 			const label = container.createSpan({ cls: "yaos-extension-edit-history-diff-unavailable" });
 			label.textContent = "(diff unavailable)";
 			return;
 		}
-		const raw = decodeContent(version.content, version.contentEnc);
-		const synthetic = computeLineHunks(prev, raw);
+		const synthetic = computeLineHunks(prev, current);
 		this.renderLineHunks(container, prev, synthetic);
 	}
 
