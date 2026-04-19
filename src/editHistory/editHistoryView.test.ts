@@ -935,5 +935,30 @@ describe("EditHistoryView", () => {
 				expect(el.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBeGreaterThan(0);
 			}
 		});
+
+		it("renders oversized paired lines as plain text (size guard)", async () => {
+			const big = "x".repeat(2500);
+			const big2 = big + "Y";
+			const t0 = 1_700_000_000_000;
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: t0, device: "DevA", content: big },
+					{ ts: t0 + 1000, device: "DevA", hunks: [{ s: 0, d: 1, a: [big2] }] },
+				],
+			};
+			const store = makeStore({ "f1": entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const delText = view.contentEl.querySelector(".yaos-extension-edit-history-diff-del-line .yaos-extension-edit-history-diff-line-text");
+			const addText = view.contentEl.querySelector(".yaos-extension-edit-history-diff-add-line .yaos-extension-edit-history-diff-line-text");
+			expect(delText!.querySelectorAll(".yaos-extension-edit-history-diff-word-del").length).toBe(0);
+			expect(addText!.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBe(0);
+			expect(delText!.textContent).toBe(big);
+			expect(addText!.textContent).toBe(big2);
+		});
 	});
 });
