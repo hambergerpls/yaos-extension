@@ -300,4 +300,10 @@ describe("pairLinesForWordDiff", () => {
 		];
 		expect(pairLinesForWordDiff(input)).toEqual(input);
 	});
+
+	it("leaves pure add lines without words (no preceding del)", () => {
+		const result = pairLinesForWordDiff([{ kind: "add", text: "hello" }]);
+		expect(result).toEqual([{ kind: "add", text: "hello" }]);
+		expect((result[0] as any).words).toBeUndefined();
+	});
 });
