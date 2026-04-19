@@ -371,4 +371,21 @@ describe("pairLinesForWordDiff", () => {
 		expect((result[0] as any).words).toBeUndefined();
 		expect((result[1] as any).words).toBeUndefined();
 	});
+
+	it("applies diff_cleanupSemantic for readable typo-fix output", () => {
+		const result = pairLinesForWordDiff([
+			{ kind: "del", text: "teh quick brown fox" },
+			{ kind: "add", text: "the quick brown fox" },
+		]);
+		const del = result[0] as DiffLineWithWords & { kind: "del" };
+		const add = result[1] as DiffLineWithWords & { kind: "add" };
+		// After cleanupSemantic, both sides should have ≤ 5 segments total.
+		expect(del.words!.length).toBeLessThanOrEqual(5);
+		expect(add.words!.length).toBeLessThanOrEqual(5);
+		// Joining equal+del segments recovers original del text; equal+add recovers add text.
+		const delJoined = del.words!.filter((s) => s.kind !== "add").map((s) => s.text).join("");
+		const addJoined = add.words!.filter((s) => s.kind !== "del").map((s) => s.text).join("");
+		expect(delJoined).toBe("teh quick brown fox");
+		expect(addJoined).toBe("the quick brown fox");
+	});
 });
