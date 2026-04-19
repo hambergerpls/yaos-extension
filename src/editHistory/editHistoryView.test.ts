@@ -908,5 +908,32 @@ describe("EditHistoryView", () => {
 			expect(delText!.querySelectorAll(".yaos-extension-edit-history-diff-word-del").length).toBeGreaterThan(0);
 			expect(delText!.querySelectorAll(".yaos-extension-edit-history-diff-word-equal").length).toBeGreaterThan(0);
 		});
+
+		it("renders word spans on each paired line in a multi-pair hunk", async () => {
+			const t0 = 1_700_000_000_000;
+			const entry: FileHistoryEntry = {
+				path: "x.md",
+				baseIndex: 0,
+				versions: [
+					{ ts: t0, device: "DevA", content: "foo one\nfoo two" },
+					{ ts: t0 + 1000, device: "DevA", hunks: [{ s: 0, d: 2, a: ["bar one", "bar two"] }] },
+				],
+			};
+			const store = makeStore({ "f1": entry });
+			const view = new EditHistoryView({} as any, store, vi.fn());
+			await view.onOpen();
+			await view.refresh("f1");
+
+			const delLines = view.contentEl.querySelectorAll(".yaos-extension-edit-history-diff-del-line");
+			const addLines = view.contentEl.querySelectorAll(".yaos-extension-edit-history-diff-add-line");
+			expect(delLines.length).toBe(2);
+			expect(addLines.length).toBe(2);
+			for (const el of Array.from(delLines)) {
+				expect(el.querySelectorAll(".yaos-extension-edit-history-diff-word-del").length).toBeGreaterThan(0);
+			}
+			for (const el of Array.from(addLines)) {
+				expect(el.querySelectorAll(".yaos-extension-edit-history-diff-word-add").length).toBeGreaterThan(0);
+			}
+		});
 	});
 });
