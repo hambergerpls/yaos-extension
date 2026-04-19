@@ -463,5 +463,42 @@ describe("EditHistoryStore", () => {
 			expect(writes.has(".yaos-extension/edit-history-device-alpha.json")).toBe(true);
 			expect(writes.has(".yaos-extension/edit-history.json")).toBe(false);
 		});
+
+		it("normalizes device ids with filesystem-unsafe chars", async () => {
+			const writes = new Map<string, string>();
+			const mockVault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => writes.has(p)),
+					read: vi.fn(async (p: string) => writes.get(p) ?? ""),
+					write: vi.fn(async (p: string, data: string) => { writes.set(p, data); }),
+					mkdir: vi.fn(async () => {}),
+					list: vi.fn(async () => ({ files: [], folders: [] })),
+				},
+			};
+
+			const store = new EditHistoryStore(mockVault as any, () => "Device / With Spaces & Slash");
+			await store.addVersion("f1", "a.md", { ts: 1, device: "x", content: "y" });
+
+			// "/" → "_", space → "_", "&" → "_"
+			expect(writes.has(".yaos-extension/edit-history-Device___With_Spaces___Slash.json")).toBe(true);
+		});
+
+		it("uses 'unknown' when device id is empty or whitespace", async () => {
+			const writes = new Map<string, string>();
+			const mockVault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => writes.has(p)),
+					read: vi.fn(async (p: string) => writes.get(p) ?? ""),
+					write: vi.fn(async (p: string, data: string) => { writes.set(p, data); }),
+					mkdir: vi.fn(async () => {}),
+					list: vi.fn(async () => ({ files: [], folders: [] })),
+				},
+			};
+
+			const store = new EditHistoryStore(mockVault as any, () => "   ");
+			await store.addVersion("f1", "a.md", { ts: 1, device: "x", content: "y" });
+
+			expect(writes.has(".yaos-extension/edit-history-unknown.json")).toBe(true);
+		});
 	});
 });
