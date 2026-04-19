@@ -35,6 +35,7 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |
   +-- editHistory/
   |     +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
+  |     +-- editHistoryCompress.ts (Pure: fflate deflate-raw + base64 encode/decode for bases)
   |     +-- editHistoryDiff.ts    (Pure: diff-match-patch line-hunks + reconstructVersion + computeDiffSummary)
   |     +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
   |     +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
@@ -71,11 +72,12 @@ Direct import relationships:
 | `notifications/notificationView` | comments/types, notifications/notificationStore, obsidian view APIs |
 | `notifications/notificationHelpers` | comments/types |
 | `editHistory/types` | nothing |
-| `editHistory/editHistoryDiff` | editHistory/types, diff-match-patch |
+| `editHistory/editHistoryCompress` | fflate |
+| `editHistory/editHistoryDiff` | editHistory/types, editHistory/editHistoryCompress, diff-match-patch |
 | `editHistory/pendingEditsDb` | nothing |
-| `editHistory/editHistoryStore` | editHistory/types, obsidian (`Vault`), ../logger |
-| `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, editHistory/pendingEditsDb, ../logger |
-| `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/types, obsidian (`ItemView`) |
+| `editHistory/editHistoryStore` | editHistory/types, editHistory/editHistoryCompress, editHistory/editHistoryDiff, obsidian (`Vault`), ../logger |
+| `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/editHistoryCompress, editHistory/types, editHistory/pendingEditsDb, ../logger |
+| `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/editHistoryCompress, editHistory/types, obsidian (`ItemView`) |
 | `utils/debounce` | nothing |
 
 Siblings never import each other. `main.ts` is the only module that wires everything
@@ -452,15 +454,41 @@ Pure functions with no side effects:
 
 Exports `EditHistoryData`, `FileHistoryEntry`, `VersionSnapshot`, `LineHunk`.
 Pure data, no logic. A `VersionSnapshot` has either `content` (base version)
-or `hunks` (line-oriented delta). `EditHistoryData.version` is `2`;
-version-1 files (stored as char-level `diff` tuples by an older build) are
-silently wiped on load — see `editHistoryStore.load`.
+or `hunks` (line-oriented delta). `EditHistoryData.version` is `3`;
+version-1 files (char-level `diff` tuples) and version-2 files (line-hunks
+with plaintext bases) are silently wiped on load — see
+`editHistoryStore.load`.
 
 `LineHunk = { s: number; d: number; a: string[] }` encodes one change region
 relative to the reconstructed previous version. `s` is the 0-indexed starting
 line, `d` is the number of old lines deleted, `a` is the list of new lines
 inserted at that position. Old line text is *not* stored — derive it by
 reconstructing the previous version and slicing `[s, s+d)`.
+
+`content` may be stored either as plain UTF-8 (no `contentEnc`) or as
+deflate-raw + base64 (`contentEnc: "dfb64"`). Encoding is chosen by
+`editHistoryCompress.encodeContent` — see that module.
+
+### editHistory/editHistoryCompress.ts -- Base content compression
+
+Pure helpers for encoding / decoding `VersionSnapshot.content`:
+
+- `encodeContent(raw)` → `{ content, contentEnc? }`. Returns raw plaintext
+  when `raw.length < 512` OR when deflate-raw + base64 does not shrink the
+  payload. Otherwise returns `{ content: <b64>, contentEnc: "dfb64" }`.
+- `decodeContent(content, contentEnc)` → raw string. Inverse of
+  `encodeContent`. Throws on unknown `contentEnc`. An `undefined`
+  `contentEnc` is a no-op (raw plaintext).
+
+The chunked base64 helpers (`u8ToB64`, `b64ToU8`) walk 0x8000-byte slices
+to avoid call-stack overflow on large inputs.
+
+Uses `fflate`'s sync `deflateSync` / `inflateSync` (raw DEFLATE per
+RFC 1951, no wrapper — fflate's `deflateSync` is the raw variant; the
+zlib-wrapped form is `zlibSync`). Sync is a deliberate choice — works
+identically on desktop and mobile WebViews with no Promise plumbing.
+
+Dependencies: `fflate`.
 
 ### editHistory/editHistoryDiff.ts -- Diff + reconstruction
 
@@ -478,8 +506,10 @@ Pure functions built on `diff-match-patch` line-mode:
   `\n` (empty `""` is treated as 0 lines, not 1), walks `hunks` in
   ascending `s`, splicing each in turn, then rejoins with `\n`.
 - `reconstructVersion(entry, versionIndex)` -- walks the delta chain from
-  `entry.baseIndex` applying `applyLineHunks` for each step; returns
-  `null` on a missing or content-less link.
+  `entry.baseIndex` applying `applyLineHunks` for each step. The base's
+  `content` is passed through `decodeContent(base.content, base.contentEnc)`
+  first so dfb64-encoded bases are transparently inflated. Returns `null`
+  on a missing or content-less link.
 - `computeDiffSummary(hunks)` -- returns `{ added, removed }` computed as
   `Σ h.a.length` and `Σ h.d` respectively (line-counted, not
   character-counted).
@@ -514,6 +544,12 @@ that need read-compute-write — `EditHistoryCapture` uses it to compute
 diffs and dedup decisions against an up-to-date entry snapshot. Reads
 (`getEntry`, `load`) remain unqueued because `adapter.write` is atomic
 at the filesystem level.
+
+`load()` silently wipes persisted data whose `version` is not `3` — both
+legacy v1 (char-level diff tuples) and v2 (line-hunks with plaintext bases)
+are dropped. `prune` re-encodes any synthesized rebase base through
+`encodeContent` before writing, so compressed bases stay compressed across
+retention rollover.
 
 Constructor: `new EditHistoryStore(vault, filePath)`.
 
@@ -603,8 +639,12 @@ the 3-line context window collapse into a `.diff-hunk-skip` marker
 (`… N unchanged lines`). The initial snapshot (`versionIndex === 0`)
 still renders as a single insert-styled `.diff-add` span truncated to
 20 lines with a `… (N more lines)` marker — it does NOT use the hunk
-rendering. If reconstruction returns null for
-a mid-chain base, a `.diff-unavailable` fallback label renders instead.
+rendering. The displayed text is piped through
+`decodeContent(version.content, version.contentEnc)` first so
+dfb64-encoded bases render as decompressed plaintext. Mid-chain rebase
+bases are likewise decoded before the `computeLineHunks` synthesis. If
+reconstruction returns null for a mid-chain base, a `.diff-unavailable`
+fallback label renders instead.
 
 Constructor: `new EditHistoryView(leaf, store, onRestore)`.
 
