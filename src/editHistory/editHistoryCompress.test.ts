@@ -54,4 +54,10 @@ describe("encodeContent", () => {
 			/editHistoryCompress.*unknown encoding.*gzip/,
 		);
 	});
+
+	it("roundtrips Unicode (CJK + emoji) losslessly", () => {
+		const raw = "日本語のテスト 🎉 emoji mix αβγ русский\n".repeat(30);
+		const { content, contentEnc } = encodeContent(raw);
+		expect(decodeContent(content, contentEnc)).toBe(raw);
+	});
 });
