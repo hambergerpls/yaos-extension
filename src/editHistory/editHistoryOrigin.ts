@@ -12,6 +12,8 @@
  * edits that should still show up in the timeline.
  */
 export function isLocalOrigin(origin: unknown, provider: unknown): boolean {
-	if (provider !== undefined && origin === provider) return false;
+	// `null`/`undefined` provider means "no provider reference known" — treat
+	// every origin as local rather than fail-closed matching null origins.
+	if (provider != null && origin === provider) return false;
 	return true;
 }
