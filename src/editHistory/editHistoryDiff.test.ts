@@ -306,4 +306,10 @@ describe("pairLinesForWordDiff", () => {
 		expect(result).toEqual([{ kind: "add", text: "hello" }]);
 		expect((result[0] as any).words).toBeUndefined();
 	});
+
+	it("leaves pure del lines without words (no following add)", () => {
+		const result = pairLinesForWordDiff([{ kind: "del", text: "bye" }]);
+		expect(result).toEqual([{ kind: "del", text: "bye" }]);
+		expect((result[0] as any).words).toBeUndefined();
+	});
 });
