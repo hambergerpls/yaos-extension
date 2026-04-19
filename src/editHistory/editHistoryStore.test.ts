@@ -438,4 +438,29 @@ describe("EditHistoryStore", () => {
 			expect(data.entries["file-a"]!.versions.length).toBe(2);
 		});
 	});
+
+	describe("per-device file path", () => {
+		it("writes to edit-history-<deviceId>.json based on getDeviceId", async () => {
+			const writes = new Map<string, string>();
+			const mockVault = {
+				adapter: {
+					exists: vi.fn(async (p: string) => writes.has(p)),
+					read: vi.fn(async (p: string) => writes.get(p) ?? ""),
+					write: vi.fn(async (p: string, data: string) => { writes.set(p, data); }),
+					mkdir: vi.fn(async () => {}),
+					list: vi.fn(async () => ({ files: [], folders: [] })),
+				},
+			};
+
+			const store = new EditHistoryStore(mockVault as any, () => "device-alpha");
+			await store.addVersion("f1", "a.md", {
+				ts: 1,
+				device: "device-alpha",
+				content: "hello",
+			});
+
+			expect(writes.has(".yaos-extension/edit-history-device-alpha.json")).toBe(true);
+			expect(writes.has(".yaos-extension/edit-history.json")).toBe(false);
+		});
+	});
 });
