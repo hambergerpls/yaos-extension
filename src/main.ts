@@ -238,6 +238,7 @@ export default class YaosExtensionPlugin extends Plugin {
                 const yText = idToText.get(fileId);
                 return yText ?? null;
               },
+              () => (vaultSync as any).provider,
             );
           } catch (e) {
             log("editHistory: failed to open IndexedDB, edit history capture disabled", e);
