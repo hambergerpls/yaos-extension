@@ -181,3 +181,30 @@ export class EditHistoryStore {
 		});
 	}
 }
+
+/**
+ * Enumerate every `.yaos-extension/edit-history*.json` file in the vault,
+ * including the legacy shared file if present. Siblings only — does not
+ * recurse. Returns [] if the directory is missing.
+ */
+export async function listAllHistoryFiles(vault: Vault): Promise<string[]> {
+	try {
+		const exists = await vault.adapter.exists(HISTORY_DIR);
+		if (!exists) return [];
+		const listing = await vault.adapter.list(HISTORY_DIR);
+		const out: string[] = [];
+		for (const f of listing.files) {
+			const name = f.slice(HISTORY_DIR.length + 1);
+			if (name === "edit-history.json") {
+				out.push(f);
+				continue;
+			}
+			if (name.startsWith("edit-history-") && name.endsWith(".json")) {
+				out.push(f);
+			}
+		}
+		return out;
+	} catch {
+		return [];
+	}
+}
