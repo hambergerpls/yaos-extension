@@ -40,4 +40,8 @@ describe("encodeContent", () => {
 			expect(result.contentEnc).toBeUndefined();
 		}
 	});
+
+	it("returns raw empty string unchanged", () => {
+		expect(encodeContent("")).toEqual({ content: "" });
+	});
 });
