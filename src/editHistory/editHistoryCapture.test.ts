@@ -690,6 +690,15 @@ describe("EditHistoryCapture", () => {
 			expect(snap.contentEnc).toBe("dfb64");
 			expect(snap.content.length).toBeLessThan(largeRaw.length);
 		});
+
+		it("stores small content raw (no contentEnc)", async () => {
+			await capture.captureSnapshot("f1", "a.md", "short");
+
+			expect(captured.calls).toHaveLength(1);
+			const snap = captured.calls[0].snap;
+			expect(snap.content).toBe("short");
+			expect(snap.contentEnc).toBeUndefined();
+		});
 	});
 
 	describe("recovery on start", () => {
