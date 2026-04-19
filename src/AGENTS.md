@@ -37,8 +37,10 @@ main.ts  (orchestrator, plugin lifecycle, settings tab)
   |     +-- types.ts              (EditHistoryData, FileHistoryEntry, VersionSnapshot)
   |     +-- editHistoryCompress.ts (Pure: fflate deflate-raw + base64 encode/decode for bases)
   |     +-- editHistoryDiff.ts    (Pure: diff-match-patch line-hunks + reconstructVersion + computeDiffSummary)
-  |     +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history.json)
+  |     +-- editHistoryStore.ts   (Read/write .yaos-extension/edit-history-<deviceId>.json + listAllHistoryFiles)
   |     +-- pendingEditsDb.ts     (IndexedDB crash-safe staging for in-flight edits)
+  |     +-- editHistoryOrigin.ts  (Pure: isLocalOrigin(origin, provider) for remote-edit filtering)
+  |     +-- editHistoryMerge.ts   (Pure: loadMergedEntry(vault, fileId) unions all edit-history-*.json)
   |     +-- editHistoryCapture.ts (Subscribes to Y.Map observeDeep + debounce/maxWait + batches into store)
   |     +-- editHistoryView.ts    (Obsidian ItemView: sidebar with date groups + session grouping)
   |
@@ -76,12 +78,18 @@ Direct import relationships:
 | `editHistory/editHistoryDiff` | editHistory/types, editHistory/editHistoryCompress, diff-match-patch |
 | `editHistory/pendingEditsDb` | nothing |
 | `editHistory/editHistoryStore` | editHistory/types, editHistory/editHistoryCompress, editHistory/editHistoryDiff, obsidian (`Vault`), ../logger |
-| `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/editHistoryCompress, editHistory/types, editHistory/pendingEditsDb, ../logger |
-| `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/editHistoryCompress, editHistory/types, obsidian (`ItemView`) |
+| `editHistory/editHistoryOrigin` | nothing |
+| `editHistory/editHistoryMerge` | editHistory/types, editHistory/editHistoryStore (`listAllHistoryFiles` only), editHistory/editHistoryDiff (`applyLineHunks`), editHistory/editHistoryCompress (`decodeContent`), obsidian (`Vault`), ../logger |
+| `editHistory/editHistoryCapture` | editHistory/editHistoryStore, editHistory/editHistoryDiff, editHistory/editHistoryCompress, editHistory/editHistoryOrigin, editHistory/types, editHistory/pendingEditsDb, ../logger |
+| `editHistory/editHistoryView` | editHistory/editHistoryStore, editHistory/editHistoryMerge, editHistory/editHistoryDiff, editHistory/types, obsidian (`ItemView`, `Vault`) |
 | `utils/debounce` | nothing |
 
-Siblings never import each other. `main.ts` is the only module that wires everything
-together.
+Siblings never import each other, **except within `editHistory/`**: the leaf
+modules `editHistoryOrigin` and `editHistoryMerge` are imported by
+`editHistoryCapture` and `editHistoryView` respectively, and `editHistoryMerge`
+pulls `listAllHistoryFiles` from `editHistoryStore` (the one narrow cross-leaf
+dependency, documented in the `editHistoryMerge` section). `main.ts` is the
+only module that wires everything together across subsystems.
 
 ## Startup sequence
 
@@ -531,9 +539,10 @@ this module no longer owns a character-level diff op type.
 
 ### editHistory/editHistoryStore.ts -- JSON persistence
 
-`EditHistoryStore` manages `.yaos-extension/edit-history.json` (synced via
-YAOS). Maintains an in-memory copy; flushes to disk after each mutation
-via `saveData()` queue.
+`EditHistoryStore` manages per-device edit history files under
+`.yaos-extension/edit-history-<deviceId>.json` (synced via YAOS's blob
+sync). Maintains an in-memory copy; flushes to disk after each mutation
+via the internal write queue.
 
 Key methods:
 - `load()` / `save()` -- disk I/O
@@ -552,13 +561,82 @@ diffs and dedup decisions against an up-to-date entry snapshot. Reads
 (`getEntry`, `load`) remain unqueued because `adapter.write` is atomic
 at the filesystem level.
 
+Histories are stored per-device: each device writes to
+`.yaos-extension/edit-history-<deviceId>.json`, where `<deviceId>` is
+the YAOS local device name with non-`[a-zA-Z0-9_-]` chars replaced by
+`_` (empty/whitespace → `"unknown"`). Only the local device writes its
+own file, so blob-sync LWW on `.yaos-extension/` no longer overwrites
+history entries owned by other devices. Reads union across every
+sibling device file via `editHistoryMerge.loadMergedEntry`.
+
+On `load()`, if the legacy shared `edit-history.json` exists and the
+per-device file does not, the legacy file is renamed to
+`edit-history-<deviceId>.json` (one-shot migration). If both exist, the
+per-device file wins at write time; the legacy file is untouched and
+still contributes to the merged view until pruned out organically.
+
+New static export: `listAllHistoryFiles(vault)` enumerates every
+`.yaos-extension/edit-history*.json` sibling without recursing; used by
+`editHistoryMerge` to collect cross-device histories on read.
+
 `load()` silently wipes persisted data whose `version` is not `3` — both
 legacy v1 (char-level diff tuples) and v2 (line-hunks with plaintext bases)
 are dropped. `prune` re-encodes any synthesized rebase base through
 `encodeContent` before writing, so compressed bases stay compressed across
 retention rollover.
 
-Constructor: `new EditHistoryStore(vault, filePath)`.
+Constructor: `new EditHistoryStore(vault, getDeviceId)`.
+
+### editHistory/editHistoryOrigin.ts -- Remote-edit filter
+
+Pure helper: `isLocalOrigin(origin, provider) → boolean`. Returns `false`
+only when `origin === provider` (reference equality to the y-websocket
+provider installed by YAOS). Every other origin — `null`, CodeMirror's
+`YSyncConfig` object, local string origins like `"disk-sync"`,
+`"vault-crdt-seed"`, `"snapshot-restore"` — counts as local. A
+`null`/`undefined` provider reference (e.g. pre-init or mid-reconnect)
+is treated as "no provider known" and every origin is considered local
+(fail-open).
+
+Used by `editHistoryCapture.onIdToTextObserveDeep` to drop Yjs
+transactions produced by remote peers, so we don't misattribute remote
+content to this device, don't starve the debounce idle timer during
+joint editing, and don't capture phantom versions for files the local
+user never touched.
+
+Dependencies: none.
+
+### editHistory/editHistoryMerge.ts -- Cross-device timeline merge
+
+Pure helper: `loadMergedEntry(vault, fileId) → MergedEntry | null`.
+Enumerates every `.yaos-extension/edit-history-*.json` (plus the legacy
+shared `edit-history.json` if present) via
+`editHistoryStore.listAllHistoryFiles`, parses each (silently skips
+corrupt JSON or non-v3 files), and flattens `(deviceId, VersionSnapshot)`
+pairs into a single timeline sorted by `ts` ascending.
+
+Because `VersionSnapshot.hunks` are relative to the immediately preceding
+version **in the same device's file**, reconstruction happens per device
+*before* merging. The returned `MergedEntry.absoluteContents[i]` is the
+fully-reconstructed text at each timeline step; the view renders
+cross-device hunks by diffing adjacent absolute snapshots with
+`computeLineHunks`, not by trusting stored deltas across device
+boundaries.
+
+Uses a private `reconstructAt(entry, i)` helper (not
+`editHistoryDiff.reconstructVersion`) because we need to support
+mid-chain rebase bases: at any timeline index `i`, the function walks
+backward to the nearest content-bearing version ≤ i and replays hunks
+forward. `editHistoryDiff.reconstructVersion` only looks at
+`entry.baseIndex` and would return `null` for versions past a mid-chain
+rebase.
+
+`sourceDeviceIds[i]` carries the filename stem (e.g. `"alpha"` from
+`edit-history-alpha.json`, `"legacy"` from the pre-migration shared file).
+
+Dependencies: `editHistoryStore.listAllHistoryFiles`,
+`editHistoryDiff.applyLineHunks`, `editHistoryCompress.decodeContent`,
+`../logger`, obsidian `Vault`.
 
 ### editHistory/pendingEditsDb.ts -- IndexedDB crash-safe staging
 
@@ -603,7 +681,19 @@ store mutations. `promoteFromDb` removes the IDB entry only after a
 successful capture; failures are warn-logged and keep the pending
 entry in IDB for `recoverOrphans` to retry on the next plugin load.
 
+`onIdToTextObserveDeep(events, txn)` inspects `txn.origin`: if it is
+reference-equal to the y-websocket provider (passed in through the
+optional `getProvider` argument to `start()`), the event batch is
+dropped before any file id is collected. This removes phantom
+captures for remote-authored edits, stops debounce timers from
+resetting on remote traffic, and keeps `VersionSnapshot.device`
+attribution honest. Transactions with any other origin (null,
+YSyncConfig object, `"disk-sync"`, `"vault-crdt-seed"`,
+`"snapshot-restore"`, …) are still captured. The remote-origin filter
+lives in `editHistoryOrigin.isLocalOrigin`.
+
 Constructor: `new EditHistoryCapture(store, getDeviceName, settings, maxSizeBytes, pendingDb)`.
+Start signature: `start(idToText, getFilePath, getText, getProvider?)`.
 
 ### editHistory/editHistoryView.ts -- Sidebar panel
 
@@ -625,15 +715,23 @@ instance field `expandedSessions: Set<string>` keyed by
 the **newest** version's calendar date so they stay grouped.
 **Concurrent `refresh()` calls are deduplicated via a
 `refreshGeneration` counter** — the stale refresh no-ops after its
-awaited `store.getEntry()` resolves, so only the latest call ever
-mutates the DOM.
+awaited `loadMergedEntry(vault, fileId)` resolves, so only the latest
+call ever mutates the DOM.
+
+`refresh(fileId)` reads via `editHistoryMerge.loadMergedEntry(vault,
+fileId)` rather than `store.getEntry`, so the rendered timeline
+includes every device's versions in `ts` order regardless of which
+device saved which snapshot. Each timeline row's displayed hunks are
+synthesized at render time by diffing the pre-computed absolute
+contents (`merged.absoluteContents[i-1]` vs `merged.absoluteContents[i]`)
+with `computeLineHunks`. Stored `hunks` on individual snapshots are
+not trusted across device boundaries because they reference previous
+versions in their own file only. The "Restore" button uses
+`merged.absoluteContents[i]` directly (no reconstruction needed at
+render time).
 
 Each version entry renders an always-visible GitHub-style hunk diff
-below its summary line. Both stored deltas (`version.hunks`) and
-mid-chain rebase bases (`content`-only versions at `versionIndex > 0` that
-synthesize hunks via `computeLineHunks(reconstructVersion(entry,
-versionIndex - 1), version.content)`) flow through one private helper,
-`renderLineHunks`. That helper splits `prevContent` on `\n`, walks the
+below its summary line through one private helper, `renderLineHunks`. That helper splits `prevContent` on `\n`, walks the
 `LineHunk[]` emitting `{kind:"retain"}` rows from gaps between hunks,
 `{kind:"del"}` rows from the `[s, s+d)` slice of `prevLines`, and
 `{kind:"add"}` rows from `h.a`; feeds the resulting `DiffLine[]` through
@@ -663,7 +761,9 @@ node. Row-level background tint from `.diff-add-line` / `.diff-del-line`
 still applies; the word-level spans layer a stronger tint on the actually-
 changed characters.
 
-Constructor: `new EditHistoryView(leaf, store, onRestore)`.
+Constructor: `new EditHistoryView(leaf, store, vault, onRestore)`. The
+`vault` is required so `refresh()` can delegate to `loadMergedEntry`
+directly (the store only holds the single local device's file).
 
 ### utils/debounce.ts -- Trailing-edge debouncer
 
