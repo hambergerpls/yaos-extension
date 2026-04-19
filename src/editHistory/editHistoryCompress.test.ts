@@ -15,4 +15,11 @@ describe("encodeContent", () => {
 		expect(result.contentEnc).toBe("dfb64");
 		expect(result.content.length).toBeLessThan(raw.length);
 	});
+
+	it("roundtrips large compressible content through encode+decode", () => {
+		const raw = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n".repeat(20);
+		const { content, contentEnc } = encodeContent(raw);
+		expect(contentEnc).toBe("dfb64");
+		expect(decodeContent(content, contentEnc)).toBe(raw);
+	});
 });
