@@ -44,4 +44,8 @@ describe("encodeContent", () => {
 	it("returns raw empty string unchanged", () => {
 		expect(encodeContent("")).toEqual({ content: "" });
 	});
+
+	it("decodes an empty-string raw value as empty string", () => {
+		expect(decodeContent("", undefined)).toBe("");
+	});
 });
