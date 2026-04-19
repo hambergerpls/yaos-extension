@@ -168,6 +168,53 @@ export type DiffLineWithWords =
 	| { kind: "add"; text: string; words?: WordDiffSegment[] }
 	| { kind: "del"; text: string; words?: WordDiffSegment[] };
 
-export function pairLinesForWordDiff(_lines: DiffLine[]): DiffLineWithWords[] {
-	throw new Error("not implemented");
+export function pairLinesForWordDiff(lines: DiffLine[]): DiffLineWithWords[] {
+	const out: DiffLineWithWords[] = lines.map((l) => ({ ...l }));
+	let i = 0;
+	while (i < out.length) {
+		if (out[i]!.kind !== "del") {
+			i++;
+			continue;
+		}
+		const delStart = i;
+		while (i < out.length && out[i]!.kind === "del") i++;
+		const delEnd = i;
+		if (i >= out.length || out[i]!.kind !== "add") continue;
+		const addStart = i;
+		while (i < out.length && out[i]!.kind === "add") i++;
+		const addEnd = i;
+		const pairCount = Math.min(delEnd - delStart, addEnd - addStart);
+		for (let k = 0; k < pairCount; k++) {
+			const d = out[delStart + k] as { kind: "del"; text: string; words?: WordDiffSegment[] };
+			const a = out[addStart + k] as { kind: "add"; text: string; words?: WordDiffSegment[] };
+			// Size guard: skip char-level diff on very long lines (both >2000 chars).
+			if (d.text.length > 2000 && a.text.length > 2000) continue;
+			const [delWords, addWords] = computeWordDiff(d.text, a.text);
+			d.words = delWords;
+			a.words = addWords;
+		}
+	}
+	return out;
+}
+
+function computeWordDiff(
+	del: string,
+	add: string,
+): [WordDiffSegment[], WordDiffSegment[]] {
+	const dmp: any = new (DiffMatchPatch as any)();
+	const diffs = dmp.diff_main(del, add, false);
+	dmp.diff_cleanupSemantic(diffs);
+	const delSegs: WordDiffSegment[] = [];
+	const addSegs: WordDiffSegment[] = [];
+	for (const [op, text] of diffs) {
+		if (op === 0) {
+			delSegs.push({ kind: "equal", text });
+			addSegs.push({ kind: "equal", text });
+		} else if (op === -1) {
+			delSegs.push({ kind: "del", text });
+		} else {
+			addSegs.push({ kind: "add", text });
+		}
+	}
+	return [delSegs, addSegs];
 }
